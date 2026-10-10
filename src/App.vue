@@ -1,0 +1,206 @@
+<script setup lang="ts">
+import { confirmation, finishConfirmation, dismissConfirmation, askConfirmation } from '@/lib/confirm'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { exit } from '@tauri-apps/plugin-process'
+import { open } from '@tauri-apps/plugin-dialog'
+import { AppWindow, BookOpenText, CalendarDays, ChevronRight, CircleHelp, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Sun, Moon, Monitor, Check } from '@lucide/vue'
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import type { AppSettings } from '@/lib/types'
+import { Card } from '@/components/ui/card'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import WindowControls from '@/components/WindowControls.vue'
+import { Input } from '@/components/ui/input'
+import AboutPage from '@/views/AboutPage.vue'
+import CountdownsPage from '@/views/CountdownsPage.vue'
+import HomePage from '@/views/HomePage.vue'
+import LibraryPage from '@/views/LibraryPage.vue'
+import NotesPage from '@/views/NotesPage.vue'
+import SettingsPage from '@/views/SettingsPage.vue'
+import StickiesPage from '@/views/StickiesPage.vue'
+import { api } from '@/lib/api'
+import { watchSystemTheme } from '@/lib/theme'
+import type { PageId, SearchResult } from '@/lib/types'
+import { useWorkspaceStore } from '@/stores/workspace'
+
+const store=useWorkspaceStore()
+const page=ref<PageId>('home')
+const search=ref('')
+const searchResults=ref<SearchResult[]>([])
+const searchOpen=ref(false)
+const systemTheme=window.matchMedia('(prefers-color-scheme: dark)')
+const systemDark=ref(systemTheme.matches)
+const darkMode=computed(()=>store.settings.theme_mode==='dark'||(store.settings.theme_mode==='system'&&systemDark.value))
+function updateSystemDark(){systemDark.value=systemTheme.matches}
+const themePopoverOpen=ref(false)
+const themeModes=[{value:'light',label:'浅色',icon:Sun},{value:'dark',label:'深色',icon:Moon},{value:'system',label:'跟随系统',icon:Monitor}] as const
+const narrowSidebar=computed(()=>(store.settings.sidebar_width ?? 240)<140)
+async function selectTheme(mode:AppSettings['theme_mode']){try{await store.setSetting('theme_mode',mode);themePopoverOpen.value=false}catch{}}
+const sidebarCollapsed=ref(localStorage.getItem('lumo-sidebar-collapsed')==='true')
+watch(sidebarCollapsed,value=>localStorage.setItem('lumo-sidebar-collapsed',String(value)))
+const nav=[
+  {id:'home',label:'首页',icon:House},
+  {id:'countdowns',label:'倒数日',icon:CalendarDays},
+  {id:'stickies',label:'便签',icon:StickyNote},
+  {id:'notes',label:'笔记',icon:BookOpenText},
+  {id:'library',label:'应用库',icon:AppWindow},
+  {id:'about',label:'关于',icon:CircleHelp},
+] as const
+const pageComponents={home:HomePage,countdowns:CountdownsPage,stickies:StickiesPage,notes:NotesPage,library:LibraryPage,settings:SettingsPage,about:AboutPage}
+const currentView=computed(()=>pageComponents[page.value])
+let searchTimer:ReturnType<typeof setTimeout>|undefined
+let removeThemeListener:(()=>void)|undefined
+let removeCloseListener:(()=>void)|undefined
+let removeNavigationListener:(()=>void)|undefined
+let removeResourceListener:(()=>void)|undefined
+let removeCleanUninstallListener:(()=>void)|undefined
+const activeSearchIndex=ref(0)
+
+watch(search, value=>{
+  if(searchTimer)clearTimeout(searchTimer)
+  const query=value.trim()
+  activeSearchIndex.value=0
+  if(!query){searchResults.value=[];searchOpen.value=false;return}
+  searchResults.value=[]
+  searchTimer=setTimeout(async()=>{try{const results=await api.search(query);if(search.value.trim()===query){searchResults.value=results;searchOpen.value=true}}catch(e){store.notify(`搜索失败：${String(e)}`)}},250)
+})
+
+async function navigate(value:PageId){try{await store.flushPendingSaves()}catch{store.notify('内容尚未保存，请检查保存状态后重试');return false}page.value=value;searchOpen.value=false;return true}
+async function openResult(result:SearchResult){try{await store.flushPendingSaves()}catch{store.notify('内容尚未保存，请检查后重试');return}store.searchTarget={kind:result.kind,id:result.id};page.value=result.kind==='note'?'notes':result.kind==='countdown'?'countdowns':'library';searchOpen.value=false;search.value=''}
+function handleSearchKeydown(event:KeyboardEvent){
+  if(event.key==='Escape'){searchOpen.value=false;return}
+  if(!searchResults.value.length)return
+  if(event.key==='ArrowDown'){event.preventDefault();searchOpen.value=true;activeSearchIndex.value=(activeSearchIndex.value+1)%searchResults.value.length}
+  else if(event.key==='ArrowUp'){event.preventDefault();searchOpen.value=true;activeSearchIndex.value=(activeSearchIndex.value+searchResults.value.length-1)%searchResults.value.length}
+  else if(event.key==='Enter'&&searchOpen.value){event.preventDefault();void openResult(searchResults.value[activeSearchIndex.value])}
+}
+async function closeWindow(){try{await store.flushPendingSaves();await exit(0)}catch(e){store.notify(`无法关闭程序：${String(e)}`)}}
+function startWindowDrag(event: MouseEvent){
+  if(event.button!==0 || (event.target as HTMLElement).closest('button,input,textarea,select,a,[data-no-drag]'))return
+  void getCurrentWindow().startDragging().catch(()=>{})
+}
+async function runCleanUninstall(){try{await api.cleanUninstall()}catch(e){store.notify(`卸载清理失败：${String(e)}`)}}
+async function chooseRecoveryDirectory(){
+  const path=await open({directory:true,multiple:false})
+  if(typeof path!=='string')return
+  try{await store.recoverDataDirectory(path);store.notify('数据目录已恢复')}
+  catch(error){store.notify(`恢复失败：${String(error)}`)}
+}
+async function useDefaultRecoveryDirectory(){
+  if(!await askConfirmation(`将数据路径设为默认目录：\n${store.bootstrap.default_data_dir}\n\n若该目录为空，会创建新的 Lumo-Hub 数据库。继续吗？`))return
+  try{await store.recoverDataDirectory(store.bootstrap.default_data_dir);store.notify('已恢复默认数据目录')}
+  catch(error){store.notify(`恢复失败：${String(error)}`)}
+}
+onMounted(async()=>{
+  systemTheme.addEventListener('change',updateSystemDark)
+  const appWindow=getCurrentWindow()
+  removeCloseListener=await appWindow.onCloseRequested(async event=>{
+    event.preventDefault()
+    try{await store.flushPendingSaves();await exit(0)}
+    catch{store.notify('还有内容未保存，请检查保存状态后再次关闭。')}
+  })
+  removeCleanUninstallListener=await listen('lumo-clean-uninstall',async()=>{
+    try{await store.flushPendingSaves();store.cleanUninstall=true}
+    catch{store.notify('当前内容尚未保存，无法继续卸载清理。')}
+  })
+  removeResourceListener=await listen('lumo-resources-changed',async()=>{try{store.resources=await api.listResources()}catch{}})
+  removeNavigationListener=await listen<{page:PageId;id:string|null}>('lumo-navigate',async({payload})=>{
+    if(!await navigate(payload.page))return
+    if(payload.id)store.searchTarget={kind:payload.page==='notes'?'note':payload.page==='stickies'?'sticky':payload.page==='countdowns'?'countdown':'resource',id:payload.id}
+  })
+  await store.initialize()
+  if(!store.startupError&&!store.recoveryError&&!store.cleanUninstall) { try{await api.openStartupView()}catch(e){store.notify(String(e))} }
+  removeThemeListener=watchSystemTheme(()=>store.settings)
+})
+onUnmounted(()=>{systemTheme.removeEventListener('change',updateSystemDark);if(searchTimer)clearTimeout(searchTimer);removeThemeListener?.();removeCloseListener?.();removeCleanUninstallListener?.();removeResourceListener?.();removeNavigationListener?.()})
+</script>
+
+<template>
+  <ConfirmDialog :open="confirmation.open" title="确认操作" :description="confirmation.description" @update:open="value=>{if(!value)dismissConfirmation()}" @confirm="finishConfirmation(true)" />
+  <div v-if="!store.initialized" class="relative flex min-h-screen items-center justify-center bg-background"><div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div><WindowControls class="absolute right-4 top-3" /><div class="flex items-center gap-3 text-sm text-muted-foreground"><span class="size-2 animate-pulse rounded-full bg-primary"></span>正在打开 Lumo-Hub…</div></div>
+  <div v-else-if="store.startupError" class="relative flex min-h-screen items-center justify-center bg-background p-8">
+    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <WindowControls class="absolute right-4 top-3" />
+    <Card class="max-w-xl p-8"><h1 class="text-xl font-semibold">无法读取本地数据</h1><p class="mt-3 text-sm leading-6 text-muted-foreground">{{ store.startupError }}</p><p class="mt-4 text-xs text-muted-foreground">数据路径索引位于 `%LOCALAPPDATA%\Lumo-Hub\bootstrap.json`。请保留现有数据目录后再修复路径配置。</p></Card>
+  </div>
+  <main v-else-if="store.recoveryError" class="relative flex min-h-screen items-center justify-center bg-background p-8">
+    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <WindowControls class="absolute right-4 top-3" />
+    <Card class="w-full max-w-2xl p-8">
+      <h1 class="text-2xl font-semibold">需要恢复数据目录</h1>
+      <p class="mt-3 text-sm leading-6 text-muted-foreground">固定的数据路径索引无法使用。请选择原有的 Lumo-Hub 数据目录，或明确使用默认位置。现有数据不会自动删除。</p>
+      <p class="mt-4 break-words rounded-xl bg-muted p-4 text-sm text-muted-foreground">{{ store.recoveryError }}</p>
+      <p class="mt-4 break-all text-xs text-muted-foreground">索引位置：%LOCALAPPDATA%\Lumo-Hub\bootstrap.json</p>
+      <div class="mt-8 flex flex-wrap gap-3"><Button @click="chooseRecoveryDirectory">选择已有数据目录</Button><Button variant="outline" @click="useDefaultRecoveryDirectory">使用默认数据目录</Button></div>
+      <p v-if="store.message" role="status" class="mt-4 text-sm text-destructive">{{ store.message }}</p>
+    </Card>
+  </main>
+  <main v-else-if="store.cleanUninstall" class="relative flex min-h-screen items-center justify-center bg-background p-8">
+    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <WindowControls class="absolute right-4 top-3" />
+    <Card class="w-full max-w-xl p-8">
+      <div class="mb-5 flex size-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive"><CircleHelp class="size-7" /></div>
+      <p class="mb-2 text-sm font-medium text-destructive">独立卸载入口</p>
+      <h1 class="text-2xl font-semibold">卸载 Lumo-Hub 并清理数据</h1>
+      <p class="mt-4 text-sm leading-6 text-muted-foreground">此操作会删除 Lumo-Hub 的笔记、便签、倒数日、应用库记录和设置，然后启动 Windows 卸载程序。删除后无法恢复，请先导出备份。</p>
+      <div class="mt-5 rounded-2xl border border-border bg-muted/50 p-4"><p class="mb-1 text-xs text-muted-foreground">将清理此数据目录</p><p class="break-all font-mono text-sm">{{ store.bootstrap.data_dir }}</p></div>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <ConfirmDialog title="确认卸载并清理全部数据？" :description="`将永久删除：\n${store.bootstrap.data_dir}\n\n然后启动 Windows 卸载程序。此操作无法撤销。`" confirm-text="删除数据并卸载" destructive @confirm="runCleanUninstall">
+          <template #trigger><Button variant="destructive">卸载并清理数据</Button></template>
+        </ConfirmDialog>
+        <Button variant="outline" @click="closeWindow">取消并关闭</Button>
+      </div>
+      <p v-if="store.message" role="status" class="mt-4 text-sm text-destructive">{{ store.message }}</p>
+    </Card>
+  </main>
+  <main v-else-if="!store.settings.welcome_completed" class="relative flex min-h-screen items-center justify-center bg-background p-8">
+    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <WindowControls class="absolute right-4 top-3" />
+    <Card class="flex w-full max-w-2xl flex-col items-center p-12 text-center">
+      <div class="mb-7 flex size-20 items-center justify-center rounded-2xl bg-primary text-3xl font-bold text-primary-foreground shadow-lg">L</div>
+      <p class="mb-3 text-sm font-medium text-primary">欢迎来到 Lumo-Hub</p>
+      <h1 class="max-w-lg text-4xl font-semibold leading-tight tracking-tight">把日常的小事，<br />安放在一个地方。</h1>
+      <p class="mt-5 max-w-md text-base leading-7 text-muted-foreground">记录想法、整理笔记、记住重要日子，也让常用的应用和文件触手可及。你的数据保存在本机。</p>
+      <Button class="mt-8 min-w-36" @click="store.completeWelcome">开始使用<ChevronRight data-icon="inline-end" /></Button>
+      <p class="mt-8 text-xs text-muted-foreground">简洁、本地、属于你的工作台</p>
+    </Card>
+  </main>
+  <div v-else class="flex h-dvh overflow-hidden bg-background">
+    <aside class="flex shrink-0 flex-col border-r border-border bg-card/70 transition-[width] duration-200" :style="{width:sidebarCollapsed?'4.5rem':`${store.settings.sidebar_width ?? 240}px`}">
+      <div class="flex h-16 shrink-0 items-center border-b border-border" :class="sidebarCollapsed?'justify-center px-2':narrowSidebar?'px-2':'px-4'" @mousedown="startWindowDrag">
+        <div class="flex items-center gap-2"><div class="flex size-8 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">L</div><p v-if="!sidebarCollapsed" class="text-sm font-semibold tracking-tight">Lumo</p></div>
+      </div>
+      <nav class="flex flex-col gap-1 py-3" :class="sidebarCollapsed?'px-2':narrowSidebar?'px-1':'px-3'" aria-label="主导航">
+        <Button v-for="item in nav" :key="item.id" variant="ghost" class="h-11 rounded-xl text-sm" :class="[sidebarCollapsed?'w-full justify-center px-0':narrowSidebar?'w-full justify-start gap-1 px-1':'w-full justify-start gap-3 px-3',page===item.id?'bg-primary/10 font-semibold text-primary':'text-muted-foreground']" :aria-label="sidebarCollapsed?item.label:undefined" :title="sidebarCollapsed?item.label:undefined" @click="navigate(item.id)"><component :is="item.icon" /><span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span></Button>
+      </nav>
+      <div class="mt-auto flex shrink-0 flex-wrap items-center justify-center gap-1 border-t border-border p-2">
+        <Button variant="ghost" :size="narrowSidebar&&!sidebarCollapsed?'icon-xs':'icon'" :aria-label="sidebarCollapsed?'展开侧边栏':'收起侧边栏'" @click="sidebarCollapsed=!sidebarCollapsed"><PanelLeftOpen v-if="sidebarCollapsed" /><PanelLeftClose v-else /></Button>
+        <template v-if="!sidebarCollapsed">
+          <Button variant="ghost" :size="narrowSidebar?'icon-xs':'icon'" aria-label="设置" :aria-pressed="page==='settings'" :class="page==='settings'?'bg-primary/10 text-primary':''" @click="navigate('settings')"><Settings /></Button>
+          <Popover v-model:open="themePopoverOpen"><PopoverTrigger as-child><Button variant="ghost" :size="narrowSidebar?'icon-xs':'icon'" aria-label="选择外观模式"><Sun v-if="darkMode" /><Moon v-else /></Button></PopoverTrigger><PopoverContent side="top" align="start" class="w-44 p-2"><p class="px-2 py-2 text-sm font-medium">外观模式</p><div class="flex flex-col gap-1"><Button v-for="mode in themeModes" :key="mode.value" variant="ghost" class="w-full justify-start" :aria-pressed="store.settings.theme_mode===mode.value" @click="selectTheme(mode.value)"><component :is="mode.icon" data-icon="inline-start" />{{ mode.label }}<Check v-if="store.settings.theme_mode===mode.value" class="ml-auto" /></Button></div></PopoverContent></Popover>
+        </template>
+      </div>
+    </aside>
+
+    <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <header class="relative z-20 flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 backdrop-blur" @mousedown="startWindowDrag">
+        <div class="min-w-0 flex-1"></div>
+        <div class="relative flex w-full max-w-xl items-center" data-no-drag>
+          <Search class="pointer-events-none absolute left-3 size-4 text-muted-foreground" /><Input v-model="search" class="h-10 border-border bg-card pl-10 pr-10" placeholder="搜索笔记、倒数日和应用库…" aria-label="全局搜索" @focus="searchOpen=!!search.trim()" @keydown="handleSearchKeydown" />
+          <div v-if="searchOpen&&search.trim()" class="absolute left-0 right-0 top-12 overflow-hidden rounded-2xl border border-border bg-popover shadow-xl">
+            <Button v-for="(result,index) in searchResults" :key="`${result.kind}-${result.id}`" variant="ghost" class="h-auto w-full items-start justify-start gap-3 rounded-none px-4 py-3 text-left whitespace-normal" :class="activeSearchIndex===index?'bg-accent':''" @mouseenter="activeSearchIndex=index" @click="openResult(result)"><span class="mt-0.5 rounded-lg bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary">{{ result.kind==='note'?'笔记':result.kind==='countdown'?'倒数日':'应用库' }}</span><span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ result.title }}</span><span class="mt-1 block truncate text-xs text-muted-foreground">{{ result.subtitle }}</span></span><ChevronRight class="mt-1 shrink-0 text-muted-foreground" /></Button>
+            <p v-if="!searchResults.length" class="px-4 py-5 text-center text-sm text-muted-foreground">没有找到相关内容</p>
+            <div class="border-t border-border px-4 py-2 text-[0.6875rem] text-muted-foreground">本地搜索 · 搜索结果仅保存在此设备</div>
+          </div>
+        </div>
+        <div class="flex min-w-0 flex-1 justify-end"><WindowControls /></div>
+      </header>
+      <main :key="page" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 pt-8">
+        <component :is="currentView" @navigate="navigate" />
+      </main>
+    </section>
+    <div v-if="store.message" role="status" class="fixed bottom-6 right-6 z-50 max-w-lg rounded-2xl border border-border bg-popover px-4 py-3 text-sm shadow-lg">{{ store.message }}</div>
+  </div>
+</template>
