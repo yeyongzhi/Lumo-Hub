@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue'
 import { getVersion } from '@tauri-apps/api/app'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type Update } from '@tauri-apps/plugin-updater'
-import { CircleHelp, Download, RefreshCw, ShieldCheck } from '@lucide/vue'
+import { Download, RefreshCw, ShieldCheck } from '@lucide/vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -20,7 +20,7 @@ async function installUpdate(){if(!updateAvailable.value||!await askConfirmation
 </script>
 
 <template>
-  <div class="flex flex-col gap-8 pb-10">
+
     
     <Card class="flex flex-col items-center gap-5 p-10 text-center">
       <div class="flex size-20 items-center justify-center rounded-2xl bg-primary text-3xl font-bold text-primary-foreground shadow-lg">L</div>
@@ -31,6 +31,4 @@ async function installUpdate(){if(!updateAvailable.value||!await askConfirmation
       <p v-if="status" class="max-w-xl text-sm text-muted-foreground">{{ status }}</p>
       <div v-if="updateAvailable" class="w-full max-w-xl rounded-2xl border border-border bg-muted/50 p-4 text-left"><div class="flex items-center gap-2 font-medium"><ShieldCheck class="size-4 text-primary" />版本 {{ updateAvailable.version }}</div><p class="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{{ updateAvailable.body||updateAvailable.rawJson?.notes||'此版本没有附带更新说明。' }}</p></div>
     </Card>
-    <Card class="p-6"><div class="mb-4 flex items-center gap-3"><div class="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><CircleHelp /></div><div><h2 class="font-semibold">开源许可</h2><p class="text-sm text-muted-foreground">Lumo-Hub 使用的主要开源项目及许可</p></div></div><div class="grid grid-cols-2 gap-3 text-sm"><div class="rounded-xl bg-muted/50 p-3"><p class="font-medium">Tauri</p><p class="mt-1 text-xs text-muted-foreground">MIT / Apache-2.0</p></div><div class="rounded-xl bg-muted/50 p-3"><p class="font-medium">Vue、Vite、Pinia</p><p class="mt-1 text-xs text-muted-foreground">MIT</p></div><div class="rounded-xl bg-muted/50 p-3"><p class="font-medium">Tailwind CSS、Reka UI</p><p class="mt-1 text-xs text-muted-foreground">MIT</p></div><div class="rounded-xl bg-muted/50 p-3"><p class="font-medium">Lucide</p><p class="mt-1 text-xs text-muted-foreground">ISC</p></div><div class="rounded-xl bg-muted/50 p-3"><p class="font-medium">SQLite</p><p class="mt-1 text-xs text-muted-foreground">Public Domain</p></div><div class="rounded-xl bg-muted/50 p-3"><p class="font-medium">Rust crates</p><p class="mt-1 text-xs text-muted-foreground">详见发行包附带的第三方许可清单</p></div></div><p class="mt-4 text-xs leading-5 text-muted-foreground">完整许可文本应随正式发行包提供；本列表用于快速查看，不替代各依赖的原始许可文件。</p></Card>
-  </div>
 </template>

@@ -28,7 +28,7 @@ Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY
 
 `src-tauri/target/release/lumo-hub.exe` 是编译产物；日常安装请使用 `bundle/nsis/` 下的 `*-setup.exe`。旁边的 `.exe.sig` 用于 Tauri updater 校验更新包，并不是 Windows 的 Authenticode 代码签名。若程序启动即退出，可查看 `%LOCALAPPDATA%\Lumo-Hub\startup-error.log` 和 Windows 事件查看器中的应用程序错误；启动日志只在 Rust panic 时写入。
 
-安装包默认以当前 Windows 用户安装。用户数据与程序安装位置分开：默认数据库在 `%APPDATA%\Lumo-Hub\app.db`，当前数据目录索引在 `%LOCALAPPDATA%\Lumo-Hub\bootstrap.json`。
+安装包默认以当前 Windows 用户安装。正式版数据默认与程序使用同一目录：选择安装到 `D:\Program\Lumo` 后，数据库、设置、笔记和备份都保存在该目录。首次启动会导入原有 AppData 数据并保留旧文件；已有安装目录数据不会被覆盖。设置中支持迁移到自定义数据目录，后续启动继续使用新目录。目录必须对当前用户可写。开发预览使用独立开发数据目录。详情见 [数据存储说明](./数据存储说明.md)。
 
 ## 首版功能
 

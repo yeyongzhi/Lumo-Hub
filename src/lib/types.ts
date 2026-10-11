@@ -1,4 +1,4 @@
-export type PageId = 'home' | 'countdowns' | 'stickies' | 'notes' | 'library' | 'settings' | 'about'
+export type PageId = 'home' | 'countdowns' | 'stickies' | 'notes' | 'library' | 'settings'
 
 export interface Note {
   id: string
@@ -51,6 +51,8 @@ export interface ResourceGroup {
 }
 
 export interface ScanCandidate {
+  imported: boolean
+  category: 'system' | 'extension' | 'application'
   name: string
   target: string
   kind: ResourceKind
@@ -59,11 +61,20 @@ export interface ScanCandidate {
   installation_path: string | null
 }
 
-export type HomeWidgetKind = 'clock' | 'countdowns' | 'sticky' | 'note' | 'recent'
+export type HomeWidgetKind = 'clock' | 'countdowns' | 'sticky' | 'note' | 'recent' | 'weather' | 'hitokoto' | 'news' | 'poetry'
 export type HomeWidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '4x1'
 export interface HomeWidget { id: string; kind: HomeWidgetKind; size: HomeWidgetSize; selected_ids?: string[] }
 
-export interface AppSettings {
+export interface ProductSettings {
+  close_to_tray: boolean
+  autostart: boolean
+  reminder_hour: number
+  reminders: Record<string,number[]>
+  pinned_stickies: string[]
+  note_tags: Record<string,string[]>
+}
+export interface AppSettings { client?:Record<string,unknown>
+  product: ProductSettings
   theme_mode: 'light' | 'dark' | 'system'
   accent: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'indigo' | 'violet'
   font_size: number
@@ -76,7 +87,7 @@ export interface AppSettings {
   auto_backup: { enabled: boolean; interval_hours: number; retain: number }
 }
 
-export interface BootstrapInfo {
+export interface BootstrapInfo { data_follows_install?:boolean
   data_dir: string
   default_data_dir: string
 }
@@ -85,7 +96,7 @@ export interface SearchResult {
   id: string
   title: string
   subtitle: string
-  kind: 'note' | 'countdown' | 'resource'
+  kind: 'note' | 'sticky' | 'countdown' | 'resource'
 }
 
 export interface TrashItem { id: string; kind: 'note' | 'sticky' | 'countdown'; title: string; deleted_at: string }

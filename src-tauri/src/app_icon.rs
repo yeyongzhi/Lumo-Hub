@@ -19,23 +19,34 @@ pub fn extract_icon_png(path: &Path) -> Option<Vec<u8>> {
             BITMAPINFO, BI_RGB, DIB_RGB_COLORS,
         },
         UI::{
-            Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON},
+            Shell::{SHGetFileInfoW, SHParseDisplayName, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_PIDL},
             WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL},
         },
     };
 
+    // Shell namespace parsing requires COM on the calling thread.
+    struct ComGuard(bool);
+    impl Drop for ComGuard {
+        fn drop(&mut self) { if self.0 { unsafe { windows_sys::Win32::System::Com::CoUninitialize() }; } }
+    }
+    let _com = ComGuard(unsafe { windows_sys::Win32::System::Com::CoInitializeEx(ptr::null(), windows_sys::Win32::System::Com::COINIT_APARTMENTTHREADED as u32) } >= 0);
     const SIZE: usize = 32;
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let normalized = std::path::PathBuf::from(path.to_string_lossy().replace('/', "\\"));
+    let wide: Vec<u16> = normalized.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut pidl = ptr::null_mut();
+    let shell_item = path.to_string_lossy().starts_with("shell:");
+    if shell_item && unsafe { SHParseDisplayName(wide.as_ptr(), ptr::null_mut(), &mut pidl, 0, ptr::null_mut()) } < 0 { return None; }
     let mut info = SHFILEINFOW::default();
     let found = unsafe {
         SHGetFileInfoW(
-            wide.as_ptr(),
+            if shell_item { pidl as *const u16 } else { wide.as_ptr() },
             0,
             &mut info,
             size_of::<SHFILEINFOW>() as u32,
-            SHGFI_ICON | SHGFI_LARGEICON,
+            SHGFI_ICON | SHGFI_LARGEICON | if shell_item { SHGFI_PIDL } else { 0 },
         )
     };
+    if !pidl.is_null() { unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(pidl.cast()) }; }
     if found == 0 || info.hIcon.is_null() {
         return None;
     }

@@ -7,7 +7,7 @@ use std::{
     process::Command,
     time::Duration,
 };
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Emitter};
 
 fn sql<T>(result: rusqlite::Result<T>) -> Result<T, String> {
     result.map_err(|e| format!("本地数据操作失败：{e}"))
@@ -57,6 +57,7 @@ pub fn recover_data_directory(
         return Err("当前不需要恢复数据路径。".into());
     }
     let requested = PathBuf::from(new_path.trim());
+
     if !requested.is_absolute() {
         return Err("请选择绝对路径。".into());
     }
@@ -70,7 +71,7 @@ pub fn recover_data_directory(
     let marker = target.join(".lumo-hub-data");
     let database = target.join("app.db");
     let mut default_can_initialize = is_default && !database.exists();
-    if default_can_initialize {
+    if default_can_initialize && cfg!(debug_assertions) {
         for entry in fs::read_dir(&target).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let name = entry.file_name();
@@ -114,14 +115,14 @@ pub fn recover_data_directory(
     for folder in ["icons", "logs", "backups"] {
         fs::create_dir_all(target.join(folder)).map_err(|e| format!("无法准备数据目录：{e}"))?;
     }
-    let new_db = db::open(&database)?;
+    let mut new_db = db::open(&database)?;
     let integrity: String = new_db
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
     if integrity != "ok" {
         return Err(format!("所选数据库校验失败：{integrity}"));
     }
-    let new_settings = storage::load_settings(&target);
+    let mut new_settings = storage::load_settings(&target);crate::note_files::migrate(&target,&mut new_db,&new_settings)?;crate::note_files::load_tags(&target,&mut new_settings)?;storage::save_settings(&target,&new_settings)?;
     for candidate in [
         state.paths.bootstrap_path.clone(),
         state.paths.bootstrap_path.with_extension("json.bak"),
@@ -181,7 +182,7 @@ pub fn clean_uninstall(app: AppHandle, state: State<'_, AppState>) -> Result<(),
     let install_real = install_dir
         .canonicalize()
         .map_err(|e| format!("无法解析程序安装目录：{e}"))?;
-    if install_real.starts_with(&root) || root.starts_with(&install_real) {
+    if root != install_real && (install_real.starts_with(&root) || root.starts_with(&install_real)) {
         return Err("数据目录与程序安装目录重叠，已停止清理。".into());
     }
     let uninstaller = [
@@ -211,7 +212,7 @@ pub fn clean_uninstall(app: AppHandle, state: State<'_, AppState>) -> Result<(),
         });
         *db = rusqlite::Connection::open_in_memory().map_err(|e| e.to_string())?;
     }
-    fs::remove_dir_all(&root).map_err(|e| format!("删除用户数据失败：{e}"))?;
+    storage::remove_data_files(&root).map_err(|e| format!("删除用户数据失败：{e}"))?;
 
     if bootstrap_points_to_root {
         let _ = fs::remove_file(bootstrap);
@@ -229,6 +230,7 @@ pub fn clean_uninstall(app: AppHandle, state: State<'_, AppState>) -> Result<(),
 
 #[tauri::command]
 pub fn set_setting(
+    app: AppHandle,
     state: State<'_, AppState>,
     key: String,
     value: serde_json::Value,
@@ -240,6 +242,12 @@ pub fn set_setting(
     let mut settings = state.settings.lock().map_err(|_| "设置状态不可用")?;
     let previous = settings.clone();
     match key.as_str() {
+        "product" => {
+            let options: ProductSettings=serde_json::from_value(value).map_err(|_|"偏好设置无效")?;
+            if options.reminder_hour>23 || options.reminders.len()>10000 || options.reminders.values().any(|days|days.len()>3||days.iter().any(|day|![0,1,7].contains(day))) || options.note_tags.values().any(|tags|tags.len()>20||tags.iter().any(|tag|tag.len()>120)) {return Err("提醒或标签设置无效".into())}
+            if options.autostart != settings.product.autostart {crate::desktop::autostart(options.autostart)?;}
+            if options.note_tags!=settings.product.note_tags {crate::note_files::save_tags(&data_root(&state)?,&AppSettings{product:options.clone(),..settings.clone()})?;}settings.product=options;
+        }
         "theme_mode" => {
             let v = value.as_str().ok_or("主题模式无效")?;
             if !["light", "dark", "system"].contains(&v) {
@@ -288,9 +296,9 @@ pub fn set_setting(
             let layout: Vec<HomeWidget> = serde_json::from_value(value).map_err(|_| "首页布局格式无效")?;
             let mut ids = std::collections::HashSet::new();
             let mut kinds = std::collections::HashSet::new();
-            if layout.len() > 5 || layout.iter().any(|widget|
+            if layout.len() > 9 || layout.iter().any(|widget|
                 widget.id.is_empty() || widget.id.len() > 80 || !ids.insert(widget.id.clone()) || !kinds.insert(widget.kind.clone())
-                || !["clock", "countdowns", "sticky", "note", "recent"].contains(&widget.kind.as_str())
+                || !["clock", "countdowns", "sticky", "note", "recent", "weather", "hitokoto", "news", "poetry"].contains(&widget.kind.as_str())
                 || !["1x1", "2x1", "1x2", "2x2", "4x1"].contains(&widget.size.as_str()) || widget.selected_ids.len() > 100 || widget.selected_ids.iter().any(|id| id.len()>80) || (["sticky", "note"].contains(&widget.kind.as_str()) && widget.selected_ids.len()>1)) {
                 return Err("首页模块或布局尺寸无效".into());
             }
@@ -304,10 +312,14 @@ pub fn set_setting(
         _ => return Err("不允许修改此设置项".into()),
     }
     if let Err(error) = storage::save_settings(&data_root(&state)?, &settings) {
+        if key=="product" {let _=crate::desktop::autostart(previous.product.autostart);}
         *settings = previous;
         return Err(error);
     }
-    Ok(settings.clone())
+    let result=settings.clone();
+    drop(settings);
+    let _=app.emit("lumo-settings-changed",());
+    Ok(result)
 }
 
 #[tauri::command]
@@ -327,24 +339,7 @@ pub fn complete_welcome(state: State<'_, AppState>) -> Result<AppSettings, Strin
 }
 
 #[tauri::command]
-pub fn list_notes(state: State<'_, AppState>) -> Result<Vec<Note>, String> {
-    let db = state.db.lock().map_err(|_| "数据库不可用")?;
-    let mut stmt = sql(db.prepare(
-        "SELECT id,title,content,created_at,updated_at FROM notes ORDER BY updated_at DESC",
-    ))?;
-    let rows = sql(stmt.query_map([], |r| {
-        Ok(Note {
-            id: r.get(0)?,
-            title: r.get(1)?,
-            content: r.get(2)?,
-            created_at: r.get(3)?,
-            updated_at: r.get(4)?,
-        })
-    }))?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| e.to_string())
-}
-
+pub fn list_notes(state: State<'_, AppState>) -> Result<Vec<Note>, String> { let root=data_root(&state)?;crate::note_files::load_tags(&root,&mut *state.settings.lock().map_err(|_|"设置不可用")?)?;return Ok(crate::note_files::list(&root)?.into_iter().map(|(n,_)|n).collect());}
 #[tauri::command]
 pub fn create_note(state: State<'_, AppState>, title: String) -> Result<Note, String> {
     let _operation = state
@@ -364,6 +359,7 @@ pub fn create_note(state: State<'_, AppState>, title: String) -> Result<Note, St
         created_at: now.clone(),
         updated_at: now,
     };
+    crate::note_files::write(&data_root(&state)?,&note,vec![])?;
     sql(db.execute(
         "INSERT INTO notes(id,title,content,created_at,updated_at) VALUES(?1,?2,'',?3,?3)",
         params![note.id, note.title, note.created_at],
@@ -382,7 +378,8 @@ pub fn update_note(
         .data_operation
         .lock()
         .map_err(|_| "数据操作状态不可用")?;
-    let db = state.db.lock().map_err(|_| "数据库不可用")?;
+    let mut db = state.db.lock().map_err(|_| "数据库不可用")?;
+    let root=data_root(&state)?;crate::note_files::sync(&root,&mut db)?;let (mut note,tags)=crate::note_files::list(&root)?.into_iter().find(|(n,_)|n.id==id).ok_or("找不到笔记")?;note.title=title.clone();note.content=content.clone();note.updated_at=db::timestamp();crate::note_files::write(&root,&note,tags)?;
     let changed = sql(db.execute(
         "UPDATE notes SET title=?1,content=?2,updated_at=?3 WHERE id=?4",
         params![title, content, db::timestamp(), id],
@@ -397,7 +394,7 @@ pub fn update_note(
 pub fn delete_note(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let _operation = state.data_operation.lock().map_err(|_| "数据操作状态不可用")?;
     let mut conn = state.db.lock().map_err(|_| "数据库不可用")?;
-    crate::recycle::trash(&mut conn, "note", &id)
+    let root=data_root(&state)?;crate::note_files::sync(&root,&mut conn)?;let path=crate::note_files::find_path(&root,&id)?;let tags=crate::note_files::list(&root)?.into_iter().find(|(n,_)|n.id==id).map(|(_,tags)|tags).unwrap_or_default();crate::recycle::trash(&mut conn,"note",&id)?;conn.execute("UPDATE recycle_bin SET payload=json_set(payload,'$.tags',json(?1)) WHERE kind='note' AND json_extract(payload,'$.id')=?2",params![serde_json::to_string(&tags).map_err(|e|e.to_string())?,id]).map_err(|e|e.to_string())?;std::fs::remove_file(path).map_err(|e|e.to_string())
 }
 
 #[tauri::command]
@@ -943,50 +940,31 @@ pub fn relocate_resource(
 
 #[tauri::command]
 pub fn search_all(state: State<'_, AppState>, query: String) -> Result<Vec<SearchResult>, String> {
-    let q = query.trim();
-    if q.is_empty() {
-        return Ok(vec![]);
-    }
-    let pat = format!("%{q}%");
-    let db = state.db.lock().map_err(|_| "数据库不可用")?;
-    let mut out = Vec::new();
-    let mut s=sql(db.prepare("SELECT id,title,substr(content,1,120) FROM notes WHERE title LIKE ?1 OR content LIKE ?1 ORDER BY updated_at DESC LIMIT 12"))?;
-    let rows = sql(s.query_map([&pat], |r| {
-        Ok(SearchResult {
-            id: r.get(0)?,
-            title: r.get(1)?,
-            subtitle: r.get(2)?,
-            kind: "note".into(),
-        })
-    }))?;
-    out.extend(
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| e.to_string())?,
-    );
-    let mut s=sql(db.prepare("SELECT id,title,target_date FROM countdowns WHERE title LIKE ?1 OR COALESCE(description,'') LIKE ?1 LIMIT 12"))?;
-    let rows = sql(s.query_map([&pat], |r| {
-        Ok(SearchResult {
-            id: r.get(0)?,
-            title: r.get(1)?,
-            subtitle: r.get(2)?,
-            kind: "countdown".into(),
-        })
-    }))?;
-    out.extend(
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|e| e.to_string())?,
-    );
-    drop(s);
-    let mut resources = crate::search::find_resources(&db, q)?;
-    resources.extend(out);
-    let out = resources;
-    Ok(out)
+    let db=state.db.lock().map_err(|_|"数据库不可用")?;
+    let mut result=crate::search::find_all(&db,&query)?;result.retain(|item|item.kind!="note");for (n,_) in crate::note_files::list(&data_root(&state)?)?{if format!("{} {}",n.title,n.content).to_lowercase().contains(&query.to_lowercase()){result.push(SearchResult{id:n.id,title:n.title,subtitle:n.content.chars().take(120).collect(),kind:"note".into()});}}Ok(result)
 }
 
 #[tauri::command]
-pub async fn scan_applications() -> Result<Vec<ScanCandidate>, String> {
-    tauri::async_runtime::spawn_blocking(app_scan::scan).await
-        .map_err(|error| format!("应用扫描任务失败：{error}"))?
+pub async fn resource_publishers(state: State<'_,AppState>) -> Result<std::collections::HashMap<String,String>,String> {
+    let resources={
+        let db=state.db.lock().map_err(|_|"数据库不可用")?;
+        let mut statement=sql(db.prepare("SELECT id,target FROM resources WHERE kind='app'"))?;
+        let rows=sql(statement.query_map([],|row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))))?;
+        sql(rows.collect::<rusqlite::Result<Vec<_>>>())?
+    };
+    tauri::async_runtime::spawn_blocking(move||app_scan::publishers(resources)).await.map_err(|e|e.to_string())?
+}
+
+#[tauri::command]
+pub async fn scan_applications(state: State<'_,AppState>) -> Result<Vec<ScanCandidate>, String> {
+    let targets={let db=state.db.lock().map_err(|_|"数据库不可用")?;let mut stmt=sql(db.prepare("SELECT target FROM resources WHERE kind='app'"))?;let rows=sql(stmt.query_map([],|r|r.get::<_,String>(0)))?;sql(rows.collect::<rusqlite::Result<Vec<_>>>())?};
+    tauri::async_runtime::spawn_blocking(move||{
+        let links=app_scan::resolve_shortcuts(&targets)?;
+        let known:std::collections::HashSet<_>=targets.iter().map(|target|app_scan::identity(target,&links)).collect();
+        let mut candidates=app_scan::scan()?;
+        for candidate in &mut candidates{candidate.imported=known.contains(&app_scan::identity(&candidate.target,&links));}
+        Ok(candidates)
+    }).await.map_err(|error|format!("应用扫描任务失败：{error}"))?
 }
 
 #[tauri::command]
@@ -1075,6 +1053,7 @@ pub fn move_data_directory(
 }
 
 fn move_data_directory_inner(state: &AppState, new_path: &str) -> Result<BootstrapInfo, String> {
+
     let requested = PathBuf::from(new_path.trim());
     if !requested.is_absolute() {
         return Err("请选择绝对路径。".into());
@@ -1176,14 +1155,14 @@ pub fn restore_default_data_directory(app: AppHandle, state: State<'_, AppState>
             if !database_info.is_file() || database_info.file_type().is_symlink() {
                 return Err("默认目录数据库不是普通文件，已停止切换。".into());
             }
-            let new_db = db::open(&default.join("app.db"))?;
+            let mut new_db = db::open(&default.join("app.db"))?;
             let integrity: String = new_db
                 .query_row("PRAGMA integrity_check", [], |r| r.get(0))
                 .map_err(|e| e.to_string())?;
             if integrity != "ok" {
                 return Err(format!("默认目录数据库校验失败：{integrity}"));
             }
-            let new_settings = storage::load_settings(&default);
+            let mut new_settings = storage::load_settings(&default);crate::note_files::migrate(&default,&mut new_db,&new_settings)?;crate::note_files::load_tags(&default,&mut new_settings)?;storage::save_settings(&default,&new_settings)?;
             let mut db = state.db.lock().map_err(|_| "数据库不可用")?;
             let mut data_dir = state.data_dir.lock().map_err(|_| "数据路径状态不可用")?;
             storage::write_bootstrap(&state.paths.bootstrap_path, &default)?;
@@ -1205,10 +1184,29 @@ fn common_launcher_target(id: &str) -> Result<(&'static str, &'static [&'static 
         "explorer" => Ok(("explorer.exe", &[], false)),
         "cmd" => Ok(("System32/cmd.exe", &[], true)),
         "powershell" => Ok(("System32/WindowsPowerShell/v1.0/powershell.exe", &[], true)),
+        "control_panel" => Ok(("System32/control.exe", &[], false)),
         "notepad" => Ok(("System32/notepad.exe", &[], false)),
         "calculator" => Ok(("System32/calc.exe", &[], false)),
         _ => Err("不支持的常用启动项".into()),
     }
+}
+
+#[tauri::command]
+pub fn common_launcher_icons() -> Result<std::collections::HashMap<String, String>, String> {
+    let windows = std::env::var_os("SystemRoot").ok_or("无法读取 Windows 系统目录")?;
+    let mut icons = std::collections::HashMap::new();
+    for id in COMMON_LAUNCHER_IDS {
+        let (relative, args, _) = common_launcher_target(id)?;
+        let target = if matches!(*id, "computer" | "recycle_bin") {
+            PathBuf::from(args[0])
+        } else if *id == "control_panel" {
+            PathBuf::from("shell:ControlPanelFolder")
+        } else { PathBuf::from(&windows).join(relative) };
+        if let Some(bytes) = crate::app_icon::extract_icon_png(&target) {
+            icons.insert((*id).to_string(), crate::app_icon::data_url(&bytes));
+        }
+    }
+    Ok(icons)
 }
 
 #[tauri::command]
@@ -1229,6 +1227,14 @@ pub fn launch_common(id: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod common_launcher_tests {
+    #[cfg(windows)]
+    #[test]
+    fn windows_common_launchers_have_native_icons() {
+        let icons = super::common_launcher_icons().unwrap();
+        for id in super::COMMON_LAUNCHER_IDS {
+            assert!(icons.get(*id).is_some_and(|icon| icon.starts_with("data:image/png;base64,")), "Missing Windows icon: {id}");
+        }
+    }
     use super::*;
     #[test]
     fn builtins_are_whitelisted_and_have_no_user_commands() {

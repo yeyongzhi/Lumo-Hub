@@ -1,3 +1,4 @@
+import { migrateLegacyStorage } from '@/lib/local-files'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { api } from '@/lib/api'
@@ -5,7 +6,7 @@ import { applySettings } from '@/lib/theme'
 import { defaultHomeLayout } from '@/lib/home-layout'
 import type { AppSettings, BootstrapInfo, Countdown, Note, Resource, ResourceGroup, Sticky } from '@/lib/types'
 
-const defaults: AppSettings = { theme_mode: 'system', accent: 'blue', font_size: 14, border_radius: 16, sidebar_width: 240, common_launchers: ["computer","recycle_bin","explorer","cmd","powershell","notepad","calculator"], welcome_completed: false, home_layout: defaultHomeLayout(), launcher: { enabled: true, shortcut: "Alt+Space", minimal_mode: false }, auto_backup: { enabled: true, interval_hours: 24, retain: 7 } }
+const defaults: AppSettings = { product: {close_to_tray:true,autostart:false,reminder_hour:9,reminders:{},pinned_stickies:[],note_tags:{}}, theme_mode: 'system', accent: 'blue', font_size: 14, border_radius: 16, sidebar_width: 240, common_launchers: ["computer","recycle_bin","explorer","cmd","powershell","control_panel","notepad","calculator"], welcome_completed: false, home_layout: defaultHomeLayout(), launcher: { enabled: true, shortcut: "Alt+Space", minimal_mode: false }, auto_backup: { enabled: true, interval_hours: 24, retain: 7 } }
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const initialized = ref(false)
@@ -42,7 +43,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         initialized.value = true
         return
       }
-      await reload()
+      await migrateLegacyStorage();await reload()
       initialized.value = true
     } catch (error) {
       startupError.value = String(error)
@@ -54,6 +55,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const [n, s, c, r, g] = await Promise.all([
       api.listNotes(), api.listStickies(), api.listCountdowns(), api.listResources(), api.listGroups(),
     ])
+    const currentSettings=await api.bootstrap();settings.value=currentSettings.settings;
     notes.value = n
     stickies.value = s
     countdowns.value = c

@@ -2,6 +2,12 @@ import { invoke } from '@tauri-apps/api/core'
 import type { AppSettings, BootstrapInfo, Countdown, Note, Resource, ResourceGroup, ScanCandidate, SearchResult, Sticky, TrashItem, BackupStatus } from './types'
 
 export const api = {
+  resourceHealth: () => invoke<Record<string,boolean>>('resource_health'),
+  closeMain: () => invoke<void>('close_main'),
+  exportMarkdown: (id:string,path:string) => invoke<void>('export_markdown',{id,path}),
+  resourcePublishers: () => invoke<Record<string,string>>('resource_publishers'),
+  fetchHomeFeed: (kind: string, city = '') => invoke<unknown>('fetch_home_feed', { kind, city }),
+  commonLauncherIcons: () => invoke<Record<string, string>>('common_launcher_icons'),
   launchCommon: (id: string) => invoke<void>('launch_common', { id }),
   searchResources: (query: string) => invoke<SearchResult[]>('search_resources', { query }),
   openStartupView: () => invoke<void>('open_startup_view'),

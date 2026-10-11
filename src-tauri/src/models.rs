@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct AppSettings {
+pub struct AppSettings { #[serde(default)] pub client:std::collections::HashMap<String,serde_json::Value>,
+    #[serde(default)] pub product: ProductSettings,
     pub theme_mode: String,
     pub accent: String,
     pub font_size: u8,
@@ -19,9 +20,23 @@ pub struct AppSettings {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProductSettings {
+    pub close_to_tray: bool,
+    pub autostart: bool,
+    pub reminder_hour: u8,
+    pub reminders: std::collections::HashMap<String, Vec<i64>>,
+    pub pinned_stickies: Vec<String>,
+    pub note_tags: std::collections::HashMap<String, Vec<String>>,
+}
+impl Default for ProductSettings {
+    fn default()->Self { Self {close_to_tray:true,autostart:false,reminder_hour:9,reminders:Default::default(),pinned_stickies:vec![],note_tags:Default::default()} }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct HomeWidget { pub id: String, pub kind: String, pub size: String, #[serde(default)] pub selected_ids: Vec<String> }
 
-pub const COMMON_LAUNCHER_IDS: &[&str] = &["computer", "recycle_bin", "explorer", "cmd", "powershell", "notepad", "calculator"];
+pub const COMMON_LAUNCHER_IDS: &[&str] = &["computer", "recycle_bin", "explorer", "cmd", "powershell", "control_panel", "notepad", "calculator"];
 fn default_common_launchers() -> Vec<String> { COMMON_LAUNCHER_IDS.iter().map(|id| (*id).to_string()).collect() }
 
 fn default_sidebar_width() -> u16 { 240 }
@@ -36,6 +51,7 @@ fn default_home_layout() -> Vec<HomeWidget> {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            client:Default::default(),product: ProductSettings::default(),
             theme_mode: "system".into(),
             accent: "blue".into(),
             font_size: 14,
@@ -164,6 +180,9 @@ pub struct ResourceGroup {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ScanCandidate {
+    #[serde(default)] pub imported: bool,
+    #[serde(default)]
+    pub category: String,
     pub name: String,
     pub target: String,
     pub kind: String,
@@ -176,6 +195,7 @@ pub struct ScanCandidate {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BootstrapInfo {
+    pub data_follows_install: bool,
     pub data_dir: String,
     pub default_data_dir: String,
 }

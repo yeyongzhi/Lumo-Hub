@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { writeLocal } from '@/lib/local-files'
 import { askConfirmation } from '@/lib/confirm'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { Monitor, Terminal, SquareTerminal, NotebookPen, Calculator, Settings, ChevronDown, LayoutGrid, AppWindow, ArrowUpRight, FileText, Folder, FolderPlus, Globe, Heart, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from '@lucide/vue'
+import { computed, onMounted, nextTick, reactive, ref, watch } from 'vue'
+import { List, Monitor, Terminal, SquareTerminal, NotebookPen, Calculator, Settings, Ellipsis, LayoutGrid, AppWindow, ArrowUpRight, FileText, Folder, FolderPlus, Globe, Heart, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from '@lucide/vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Card } from '@/components/ui/card'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Field } from '@/components/ui/field'
 import { FieldGroup } from '@/components/ui/field'
 import { FieldLabel } from '@/components/ui/field'
@@ -25,20 +29,31 @@ import type { Resource, ResourceKind, ScanCandidate } from '@/lib/types'
 
 const store=useWorkspaceStore()
 const commonDialogOpen=ref(false), commonSaving=ref(false), commonOpening=ref('')
+const commonIcons=ref<Record<string,string>>({})
+onMounted(async()=>{try{commonIcons.value=await api.commonLauncherIcons()}catch(e){store.notify(`系统图标加载失败：${String(e)}`)}})
 const commonLaunchers=[
   {id:'computer',name:'此电脑',icon:Monitor,aliases:'我的电脑 this pc computer'},
   {id:'recycle_bin',name:'回收站',icon:Trash2,aliases:'recycle bin'},
   {id:'explorer',name:'文件资源管理器',icon:Folder,aliases:'explorer 资源管理器'},
   {id:'cmd',name:'CMD',icon:SquareTerminal,aliases:'命令提示符 command'},
   {id:'powershell',name:'PowerShell',icon:Terminal,aliases:'终端'},
+  {id:'control_panel',name:'控制面板',icon:Settings,aliases:'control panel 系统设置'},
   {id:'notepad',name:'记事本',icon:NotebookPen,aliases:'notepad'},
   {id:'calculator',name:'计算器',icon:Calculator,aliases:'calculator calc'},
 ]
 const enabledCommon=computed(()=>commonLaunchers.filter(item=>(store.settings.common_launchers??commonLaunchers.map(x=>x.id)).includes(item.id)))
-const shownCommon=computed(()=>activeFilter.value==='all'?enabledCommon.value.filter(item=>`${item.name} ${item.aliases}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())):[])
+const shownCommon=computed(()=>['all','common'].includes(activeFilter.value)?enabledCommon.value.filter(item=>`${item.name} ${item.aliases}`.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())):[])
 async function setCommon(id:string,enabled:boolean){if(commonSaving.value)return;commonSaving.value=true;try{const current=store.settings.common_launchers??commonLaunchers.map(x=>x.id);await store.setSetting('common_launchers',enabled?[...new Set([...current,id])]:current.filter(x=>x!==id))}catch{}finally{commonSaving.value=false}}
+const allCommonEnabled=computed(()=>enabledCommon.value.length===commonLaunchers.length)
+async function setAllCommon(enabled:boolean){if(commonSaving.value)return;commonSaving.value=true;try{await store.setSetting('common_launchers',enabled?commonLaunchers.map(item=>item.id):[])}catch{}finally{commonSaving.value=false}}
 async function launchCommon(id:string){if(commonOpening.value)return;commonOpening.value=id;try{await api.launchCommon(id)}catch(e){store.notify(String(e))}finally{commonOpening.value=''}}
 const activeFilter=ref('all')
+const displayMode=ref<'grid'|'list'>(store.settings.client?.['lumo-library-display']==='list'?'list':'grid')
+function setDisplayMode(value:unknown){if(value==='grid'||value==='list')displayMode.value=value}
+watch(displayMode,value=>void writeLocal('lumo-library-display',value).catch(e=>store.notify(String(e))))
+const launcherLayout=computed(()=>displayMode.value==='grid'?'grid min-w-0 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-4':'flex min-w-0 flex-col gap-2')
+const launcherTile=computed(()=>displayMode.value==='grid'?'h-28 min-w-0 flex-col gap-3 rounded-2xl':'h-16 min-w-0 justify-start gap-3 rounded-xl px-4')
+const launcherIcon=computed(()=>displayMode.value==='grid'?'size-10 shrink-0 object-contain':'size-8 shrink-0 object-contain')
 const activeGroup=computed(()=>store.groups.find(group=>activeFilter.value===`group:${group.id}`))
 const query=ref('')
 const showForm=ref(false)
@@ -47,9 +62,21 @@ const groupName=ref('')
 const groupDialogOpen=ref(false), groupEditingId=ref(''), groupSaving=ref(false)
 const showScan=ref(false)
 const candidates=ref<ScanCandidate[]>([])
+const scanCategory=ref('all')
+const scanQuery=ref('')
+const showImported=ref(false)
+const resourceHealth=ref<Record<string,boolean>>({})
+watch(()=>store.resources.map(item=>item.id+item.target).join('|'),async()=>{try{resourceHealth.value=await api.resourceHealth()}catch{}},{immediate:true})
+const sortMode=ref(String(store.settings.client?.['lumo-library-sort']||'frequent')||'frequent')
+watch(sortMode,value=>void writeLocal('lumo-library-sort',value).catch(e=>store.notify(String(e))))
+const scanCategories=[{id:'all',label:'全部'},{id:'application',label:'第三方应用'},{id:'system',label:'系统自带应用'},{id:'extension',label:'扩展 / 插件应用'}]
+const filteredCandidates=computed(()=>candidates.value.filter(item=>(scanCategory.value==='all'||item.category===scanCategory.value)&&(showImported.value||!item.imported)&&item.name.toLocaleLowerCase().includes(scanQuery.value.trim().toLocaleLowerCase())))
+const publishers=ref<Record<string,string>>({})
+let publisherVersion=0
+watch([displayMode,()=>store.resources.map(item=>item.id+item.target).join('|')],async()=>{if(displayMode.value!=='list')return;const version=++publisherVersion;try{const result=await api.resourcePublishers();if(version===publisherVersion)publishers.value=result}catch{publishers.value={}}},{immediate:true})
 const selectedTargets=ref<string[]>([])
-const allScanSelected=computed(()=>candidates.value.length>0&&candidates.value.every(item=>selectedTargets.value.includes(item.target)))
-function toggleAllScan(){selectedTargets.value=allScanSelected.value?[]:[...new Set(candidates.value.map(item=>item.target))]}
+const allScanSelected=computed(()=>filteredCandidates.value.length>0&&filteredCandidates.value.every(item=>selectedTargets.value.includes(item.target)))
+function toggleAllScan(){const targets=new Set(filteredCandidates.value.map(item=>item.target));selectedTargets.value=allScanSelected.value?selectedTargets.value.filter(target=>!targets.has(target)):[...new Set([...selectedTargets.value,...targets])]}
 const scanBusy=ref(false)
 const focusedId=ref('')
 const openingId=ref('')
@@ -61,7 +88,7 @@ let searchVersion=0
 watch([query,()=>store.resources],async ([value])=>{const version=++searchVersion;matchingIds.value=[];try{const results=await api.searchResources(value);if(version===searchVersion)matchingIds.value=results.map(item=>item.id)}catch(e){store.notify(String(e))}})
 const shownResources=computed(()=>{
   const list=store.resources.filter(r=>(activeFilter.value==='all'||activeFilter.value===r.kind||(activeFilter.value==='favorites'&&r.is_favorite)||activeFilter.value===`group:${r.group_id}`)&&(!query.value.trim()||matchingIds.value.includes(r.id)))
-  return list.sort((a,b)=>query.value.trim()?matchingIds.value.indexOf(a.id)-matchingIds.value.indexOf(b.id):Number(b.is_favorite)-Number(a.is_favorite)||b.usage_count-a.usage_count||(b.last_opened_at??'').localeCompare(a.last_opened_at??'')||a.name.localeCompare(b.name))
+  return list.sort((a,b)=>query.value.trim()?matchingIds.value.indexOf(a.id)-matchingIds.value.indexOf(b.id):sortMode.value==='name'?a.name.localeCompare(b.name):sortMode.value==='recent'?(b.last_opened_at??'').localeCompare(a.last_opened_at??'')||a.name.localeCompare(b.name):b.usage_count-a.usage_count||Number(b.is_favorite)-Number(a.is_favorite)||a.name.localeCompare(b.name))
 })
 const batchMode=ref(false), selectedIds=ref<string[]>([]), batchBusy=ref(false), deleteBatch=ref(false)
 function toggleSelection(id:string){selectedIds.value=selectedIds.value.includes(id)?selectedIds.value.filter(x=>x!==id):[...selectedIds.value,id]}
@@ -78,22 +105,22 @@ function edit(item:Resource){editingId.value=item.id;form.name=item.name;form.ki
 async function pickTarget(){const result=await open({multiple:false,directory:false,filters:form.kind==='app'?[{name:'应用程序或快捷方式',extensions:['exe','lnk']}]:undefined});if(typeof result==='string'){form.target=result;if(/\.(exe|lnk)$/i.test(result))form.kind='app'}}
 async function save(){if(!form.name.trim()||!form.target.trim()){store.notify('请填写名称和启动目标');return}try{if(editingId.value){const old=store.resources.find(x=>x.id===editingId.value);if(old)await api.updateResource({...old,name:form.name.trim(),kind:form.kind,target:form.target.trim(),group_id:form.group_id||null,aliases:form.aliases.trim()})}else await api.createResource({name:form.name.trim(),kind:form.kind,target:form.target.trim(),group_id:form.group_id||null,aliases:form.aliases.trim()});await store.reload();store.notify('启动项已保存');clearForm()}catch(e){store.notify(`保存失败：${String(e)}`)}}
 async function remove(item:Resource){if(!await askConfirmation(`从应用库移除“${item.name}”？原始程序或文件不会删除。`))return;try{await api.deleteResource(item.id);await store.reload();store.notify('已从应用库移除')}catch(e){store.notify(String(e))}}
-async function launch(item:Resource){if(openingId.value)return;openingId.value=item.id;try{await store.launchResource(item.id)}catch(e){store.notify(String(e));if(item.kind!=='web'&&await askConfirmation('该路径可能已失效。现在重新定位吗？'))await relocate(item)}finally{openingId.value=''}}
+async function launch(item:Resource){if(openingId.value)return;if(resourceHealth.value[item.id]===false){await relocate(item);return;}openingId.value=item.id;try{await store.launchResource(item.id)}catch(e){store.notify(String(e));if(item.kind!=='web'&&await askConfirmation('该路径可能已失效。现在重新定位吗？'))await relocate(item)}finally{openingId.value=''}}
 async function relocate(item:Resource){const result=await open({multiple:false,directory:false,filters:item.kind==='app'?[{name:'应用程序或快捷方式',extensions:['exe','lnk']}]:undefined});if(typeof result!=='string')return;try{await api.relocateResource(item.id,result);await store.reload();store.notify('路径已更新')}catch(e){store.notify(String(e))}}
 async function favorite(item:Resource){try{await api.toggleFavorite(item.id);await store.reload()}catch(e){store.notify(String(e))}}
 function promptNewGroup(){groupEditingId.value='';groupName.value='';groupDialogOpen.value=true}
 function renameGroup(id:string,name:string){groupEditingId.value=id;groupName.value=name;groupDialogOpen.value=true}
 async function saveGroup(){if(!groupName.value.trim()||groupSaving.value)return;groupSaving.value=true;try{if(groupEditingId.value)await api.renameGroup(groupEditingId.value,groupName.value.trim());else await api.createGroup(groupName.value.trim());await store.reload();groupDialogOpen.value=false;store.notify(groupEditingId.value?'分组名称已更新':'分组已创建')}catch(e){store.notify(String(e))}finally{groupSaving.value=false}}
 async function removeGroup(id:string,name:string){if(!await askConfirmation(`删除分组“${name}”？其中的启动项会移至未分组。`))return;try{await api.deleteGroup(id);if(activeFilter.value===`group:${id}`)activeFilter.value='all';await store.reload();store.notify('分组已删除')}catch(e){store.notify(String(e))}}
-async function scan(){scanBusy.value=true;showScan.value=true;try{candidates.value=await api.scanApplications();selectedTargets.value=[]}catch(e){store.notify(`扫描失败：${String(e)}`)}finally{scanBusy.value=false}}
+async function scan(){scanBusy.value=true;showScan.value=true;try{candidates.value=await api.scanApplications();selectedTargets.value=[];scanCategory.value='all';scanQuery.value='';showImported.value=false}catch(e){store.notify(`扫描失败：${String(e)}`)}finally{scanBusy.value=false}}
 async function importSelected(){const selected=candidates.value.filter(c=>selectedTargets.value.includes(c.target));if(!selected.length){store.notify('请先选择要导入的应用');return}try{const count=await api.importCandidates(selected);await store.reload();showScan.value=false;store.notify(`已导入或更新 ${count} 个应用`)}catch(e){store.notify(`导入失败：${String(e)}`)}}
 function iconFor(kind:ResourceKind){return kind==='app'?AppWindow:kind==='web'?Globe:FileText}
 function scrollFilters(event:WheelEvent){const element=event.currentTarget as HTMLElement;if(event.shiftKey||Math.abs(event.deltaX)>Math.abs(event.deltaY)||element.scrollWidth<=element.clientWidth)return;const before=element.scrollLeft;element.scrollLeft+=event.deltaY;if(element.scrollLeft!==before)event.preventDefault()}
 </script>
 
 <template>
-  <div class="flex flex-col gap-8 pb-10">
-    <Dialog v-model:open="commonDialogOpen"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>配置常用启动项</DialogTitle><DialogDescription>开启的项目显示在「全部」的第一行，修改后自动保存。</DialogDescription></DialogHeader><FieldGroup class="min-h-0 gap-3 overflow-y-auto p-1"><Field v-for="item in commonLaunchers" :key="item.id" orientation="horizontal"><FieldLabel :for="`common-${item.id}`"><component :is="item.icon" class="size-5 shrink-0" />{{ item.name }}</FieldLabel><Switch :id="`common-${item.id}`" :model-value="enabledCommon.some(x=>x.id===item.id)" :disabled="commonSaving" @update:model-value="value=>setCommon(item.id,value)" /></Field></FieldGroup><DialogFooter><Button @click="commonDialogOpen=false">完成</Button></DialogFooter></DialogContent></Dialog>
+  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+    <Dialog v-model:open="commonDialogOpen"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>配置常用启动项</DialogTitle><DialogDescription>开启的项目显示在「全部」和「常用启动项」中，修改后自动保存。</DialogDescription></DialogHeader><FieldGroup class="min-h-0 gap-3 overflow-y-auto p-1"><Field orientation="horizontal"><FieldLabel for="common-all">全部开启 / 全部关闭</FieldLabel><Switch id="common-all" :model-value="allCommonEnabled" :disabled="commonSaving" @update:model-value="setAllCommon" /></Field><Field v-for="item in commonLaunchers" :key="item.id" orientation="horizontal"><FieldLabel :for="`common-${item.id}`"><img v-if="commonIcons[item.id]" :src="commonIcons[item.id]" alt="" class="size-5 shrink-0 object-contain" /><component :is="item.icon" v-else class="size-5 shrink-0" />{{ item.name }}</FieldLabel><Switch :id="`common-${item.id}`" :model-value="enabledCommon.some(x=>x.id===item.id)" :disabled="commonSaving" @update:model-value="value=>setCommon(item.id,value)" /></Field></FieldGroup></DialogContent></Dialog>
     <Dialog v-model:open="groupDialogOpen"><DialogContent><DialogHeader><DialogTitle>{{ groupEditingId?'重命名分组':'新建分组' }}</DialogTitle><DialogDescription>输入分组名称，整理应用库中的启动项。</DialogDescription></DialogHeader><form class="flex flex-col gap-5" @submit.prevent="saveGroup"><FieldGroup><Field><FieldLabel for="group-name">分组名称</FieldLabel><Input id="group-name" v-model="groupName" placeholder="输入分组名称" autofocus :maxlength="80" /></Field></FieldGroup><DialogFooter><Button type="button" variant="outline" @click="groupDialogOpen=false">取消</Button><Button type="submit" :disabled="!groupName.trim()||groupSaving">{{ groupSaving?'正在保存…':'保存' }}</Button></DialogFooter></form></DialogContent></Dialog>
     <Dialog :open="showForm" @update:open="value=>{if(!value)clearForm()}"><DialogContent class="flex max-h-[85dvh] flex-col sm:max-w-xl">
       <DialogHeader><DialogTitle>{{ editingId?'编辑启动项':'添加启动项' }}</DialogTitle><DialogDescription>填写启动项信息，将应用、网页或文件添加到应用库。</DialogDescription></DialogHeader>
@@ -109,55 +136,59 @@ function scrollFilters(event:WheelEvent){const element=event.currentTarget as HT
       </form>
     </DialogContent></Dialog>
     <Dialog v-model:open="showScan"><DialogContent class="flex max-h-[85dvh] flex-col sm:max-w-3xl">
-      <DialogHeader><DialogTitle>扫描本机应用</DialogTitle><DialogDescription>扫描常见开始菜单和已安装应用入口；只会导入你勾选的项目。</DialogDescription></DialogHeader>
-      <p v-if="!scanBusy" role="status" class="text-sm text-muted-foreground">共 {{ candidates.length }} 个结果 · 已选择 {{ selectedTargets.length }} 个</p>
+      <DialogHeader><DialogTitle>扫描本机应用</DialogTitle><DialogDescription>识别本机程序并按程序路径去重，只导入勾选的应用。</DialogDescription></DialogHeader>
+      <Tabs v-if="!scanBusy" v-model="scanCategory" class="shrink-0"><TabsList class="h-auto flex-wrap" aria-label="扫描应用分类"><TabsTrigger v-for="category in scanCategories" :key="category.id" :value="category.id">{{ category.label }} · {{ candidates.filter(item=>category.id==='all'||item.category===category.id).length }}</TabsTrigger></TabsList></Tabs>
+      <Field v-if="!scanBusy" orientation="horizontal"><Checkbox id="show-imported" v-model="showImported" /><FieldLabel for="show-imported">显示已添加的应用（{{ candidates.filter(item=>item.imported).length }}）</FieldLabel></Field>
+      <Input v-if="!scanBusy" v-model="scanQuery" class="shrink-0" placeholder="搜索应用名称" aria-label="搜索扫描到的应用名称" />
+      <p v-if="!scanBusy" role="status" class="text-sm text-muted-foreground">显示 {{ filteredCandidates.length }} / {{ candidates.length }} 个应用 · 已选择 {{ selectedTargets.length }} 个</p>
       <p v-if="scanBusy" class="py-6 text-center text-sm text-muted-foreground">正在扫描……</p>
-      <div v-else-if="candidates.length" class="flex min-h-0 max-h-[55dvh] flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl border border-border p-3">
-        <label v-for="item in candidates" :key="item.target" class="flex min-w-0 items-center gap-3 rounded-xl px-3 py-3 hover:bg-accent">
+      <div v-else-if="filteredCandidates.length" class="flex min-h-0 max-h-[55dvh] flex-col gap-2 overflow-y-auto overscroll-contain rounded-2xl border border-border p-3">
+        <label v-for="item in filteredCandidates" :key="item.target" class="flex min-w-0 items-center gap-3 rounded-xl px-3 py-3 hover:bg-accent">
           <Checkbox :model-value="selectedTargets.includes(item.target)" :aria-label="`选择 ${item.name}`" @update:model-value="value=>selectedTargets=value===true?[...selectedTargets,item.target]:selectedTargets.filter(target=>target!==item.target)" />
           <img v-if="item.icon_data" :src="item.icon_data" alt="" class="size-8 shrink-0 object-contain" /><AppWindow v-else class="size-8 shrink-0 text-muted-foreground" />
           <span class="flex min-w-0 flex-1 flex-col gap-1">
-            <span class="flex items-center gap-3"><span class="truncate text-sm font-medium">{{ item.name }}</span><span class="shrink-0 text-xs text-muted-foreground">{{ item.source }}</span></span>
+            <span class="flex items-center gap-3"><span class="truncate text-sm font-medium">{{ item.name }}</span><Badge v-if="item.imported" variant="secondary">已添加</Badge><span class="shrink-0 text-xs text-muted-foreground">{{ item.source }}</span></span>
             <span class="truncate text-xs text-muted-foreground" :title="item.installation_path??item.target">安装位置：{{ item.installation_path??'未能识别' }}</span>
             <span class="truncate text-xs text-muted-foreground" :title="item.target">启动入口：{{ item.target }}</span>
           </span>
         </label>
       </div>
-      <p v-else-if="!scanBusy" class="py-6 text-center text-sm text-muted-foreground">没有找到可导入的应用。</p>
-      <DialogFooter class="shrink-0"><Button variant="outline" :disabled="scanBusy||!candidates.length" @click="toggleAllScan">{{ allScanSelected?'取消全选':'全选' }}</Button><Button variant="outline" @click="showScan=false">取消</Button><Button :disabled="scanBusy||!selectedTargets.length" @click="importSelected">导入所选（{{ selectedTargets.length }}）</Button></DialogFooter>
+      <p v-else-if="!scanBusy" class="py-6 text-center text-sm text-muted-foreground">{{ candidates.length?'没有匹配的应用，请调整分类或搜索名称。':'没有找到可导入的应用。' }}</p>
+      <DialogFooter class="shrink-0"><Button variant="outline" :disabled="scanBusy||!filteredCandidates.length" @click="toggleAllScan">{{ allScanSelected?'取消全选':'全选' }}</Button><Button variant="outline" @click="showScan=false">取消</Button><Button :disabled="scanBusy||!selectedTargets.length" @click="importSelected">导入所选（{{ selectedTargets.length }}）</Button></DialogFooter>
     </DialogContent></Dialog>
-    <Tabs v-model="activeFilter" class="flex min-w-0 flex-col gap-4">
-      <div class="flex min-w-0 flex-wrap items-center gap-3">
+    <Tabs v-model="activeFilter" class="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+      <div class="flex min-w-0 shrink-0 flex-wrap items-center gap-3">
         <div class="flex min-w-0 flex-1 basis-80 items-center gap-2 overflow-x-auto py-1" aria-label="应用库筛选和分组" @wheel="scrollFilters">
           <TabsList class="shrink-0" aria-label="应用库筛选">
             <TabsTrigger v-for="item in filters" :key="item.id" :value="item.id"><component :is="item.icon" />{{ item.label }}</TabsTrigger>
             <TabsTrigger value="favorites"><Star />收藏</TabsTrigger>
+            <TabsTrigger value="common"><Monitor />常用启动项</TabsTrigger>
             <TabsTrigger v-for="group in store.groups" :key="group.id" :value="`group:${group.id}`"><Folder />{{ group.name }}</TabsTrigger>
           </TabsList>
-          <Button variant="ghost" size="icon-xs" aria-label="配置常用启动项" @click="commonDialogOpen=true"><Settings /></Button>
           <template v-if="activeGroup">
             <Button variant="ghost" size="icon-xs" :aria-label="`重命名分组 ${activeGroup.name}`" @click="renameGroup(activeGroup.id,activeGroup.name)"><Pencil /></Button>
-            <Button variant="ghost" size="icon-xs" :aria-label="`删除分组 ${activeGroup.name}`" @click="removeGroup(activeGroup.id,activeGroup.name)"><Trash2 /></Button>
+            <Button variant="danger" size="icon-xs" :aria-label="`删除分组 ${activeGroup.name}`" @click="removeGroup(activeGroup.id,activeGroup.name)"><Trash2 /></Button>
           </template>
           <Button variant="ghost" size="sm" class="shrink-0" @click="promptNewGroup"><FolderPlus data-icon="inline-start" />新建分组</Button>
         </div>
         <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" aria-label="应用库操作">
-          <Button variant="outline" size="sm" @click="batchMode=!batchMode;selectedIds=[]">{{ batchMode?'完成管理':'管理应用' }}</Button>
+          <Select v-model="sortMode"><SelectTrigger class="h-8 w-28" aria-label="应用排序"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="frequent">常用优先</SelectItem><SelectItem value="recent">最近使用</SelectItem><SelectItem value="name">名称排序</SelectItem></SelectGroup></SelectContent></Select>
+        <TooltipProvider :delay-duration="200"><ToggleGroup type="single" :model-value="displayMode" variant="outline" size="sm" aria-label="显示方式" @update:model-value="setDisplayMode"><Tooltip><TooltipTrigger as-child><ToggleGroupItem value="grid" aria-label="网格展示"><LayoutGrid /></ToggleGroupItem></TooltipTrigger><TooltipContent>网格展示</TooltipContent></Tooltip><Tooltip><TooltipTrigger as-child><ToggleGroupItem value="list" aria-label="列表展示"><List /></ToggleGroupItem></TooltipTrigger><TooltipContent>列表展示</TooltipContent></Tooltip></ToggleGroup></TooltipProvider>
           <div class="relative w-48 shrink-0"><Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input v-model="query" class="h-8 pl-9" placeholder="名称、拼音或别名" aria-label="筛选启动项" /></div>
-          <DropdownMenu><DropdownMenuTrigger as-child><Button size="sm"><Plus data-icon="inline-start" />添加<ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem @select="addResource"><Plus />添加启动项</DropdownMenuItem><DropdownMenuItem :disabled="scanBusy" @select="scan"><RefreshCw />扫描本机应用</DropdownMenuItem><DropdownMenuItem @select="commonDialogOpen=true"><Settings />配置常用启动项</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
+          <div class="flex shrink-0 items-center gap-px"><Button size="sm" class="rounded-r-none" @click="addResource"><Plus data-icon="inline-start" />添加</Button><DropdownMenu><DropdownMenuTrigger as-child><Button size="icon-sm" class="rounded-l-none" aria-label="更多应用库操作" title="更多操作"><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem @select="batchMode=!batchMode;selectedIds=[]"><Pencil />{{ batchMode?'完成管理':'管理应用' }}</DropdownMenuItem><DropdownMenuItem :disabled="scanBusy" @select="scan"><RefreshCw />扫描本机应用</DropdownMenuItem><DropdownMenuItem @select="commonDialogOpen=true"><Settings />配置常用启动项</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu></div>
         </div>
       </div>
-      <TabsContent :value="activeFilter" class="flex flex-col gap-4">
-        <div v-if="shownCommon.length" class="flex min-w-0 gap-4 overflow-x-auto" aria-label="常用启动项"><Button v-for="item in shownCommon" :key="item.id" variant="ghost" class="h-28 w-28 shrink-0 flex-col gap-3 rounded-2xl" :disabled="!!commonOpening" @click="launchCommon(item.id)"><component :is="item.icon" class="size-10 text-primary" /><span class="w-full truncate text-center text-sm">{{ item.name }}</span></Button></div>
-        <div v-if="batchMode" class="flex flex-wrap items-center gap-3 rounded-xl bg-muted p-3">
+      <TabsContent :value="activeFilter" class="min-h-0 flex-1 overflow-hidden"><ScrollArea class="h-full w-full" aria-label="应用库启动项"><div class="flex min-w-0 flex-col gap-4 pr-3 pb-3">
+        <div v-if="shownCommon.length" :class="launcherLayout" aria-label="常用启动项"><Button v-for="(item,index) in shownCommon" :key="item.id" variant="ghost" :class="launcherTile" :disabled="!!commonOpening" @click="launchCommon(item.id)"><span v-if="displayMode==='list'" class="w-7 shrink-0 text-center text-sm tabular-nums text-muted-foreground">{{ index+1 }}</span><img v-if="commonIcons[item.id]" :src="commonIcons[item.id]" alt="" :class="launcherIcon" /><component :is="item.icon" v-else :class="[launcherIcon,'text-muted-foreground']" /><span class="min-w-0 flex-1 truncate text-sm" :class="displayMode==='grid'?'w-full text-center':'text-left'">{{ item.name }}</span><span v-if="displayMode==='list'" class="w-40 shrink-0 truncate text-right text-sm text-muted-foreground">Microsoft</span></Button></div>
+        <div v-if="batchMode&&activeFilter!=='common'" class="flex flex-wrap items-center gap-3 rounded-xl bg-muted p-3">
           <Checkbox :model-value="shownResources.length>0&&shownResources.every(item=>selectedIds.includes(item.id))" aria-label="选择当前结果" @update:model-value="value=>selectedIds=value===true?shownResources.map(item=>item.id):[]"/><span class="text-sm">已选 {{ selectedIds.length }} 项</span>
           <DropdownMenu><DropdownMenuTrigger as-child><Button variant="outline" size="sm" :disabled="!selectedIds.length||batchBusy">移动分组</Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuGroup><DropdownMenuItem @select="batch('move',null)">未分组</DropdownMenuItem><DropdownMenuItem v-for="group in store.groups" :key="group.id" @select="batch('move',group.id)">{{ group.name }}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
           <Button variant="outline" size="sm" :disabled="!selectedIds.length||batchBusy" @click="batch('favorite')">收藏</Button><Button variant="outline" size="sm" :disabled="!selectedIds.length||batchBusy" @click="batch('unfavorite')">取消收藏</Button><Button variant="destructive" size="sm" :disabled="!selectedIds.length||batchBusy" @click="deleteBatch=true">移除所选</Button>
         </div>
-        <div v-if="shownResources.length" :class="batchMode?'grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-4':'grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-4'">
-          <ContextMenu v-for="item in shownResources" :key="item.id"><ContextMenuTrigger as-child><Button v-if="!batchMode" :id="`resource-${item.id}`" variant="ghost" class="h-28 min-w-0 flex-col gap-3 rounded-2xl" :class="focusedId===item.id?'ring-2 ring-primary':''" :title="item.name" :disabled="!!openingId" @click="launch(item)"><img v-if="item.icon_data" :src="item.icon_data" alt="" class="size-10 object-contain"/><component :is="iconFor(item.kind)" v-else class="size-10 text-primary"/><span class="w-full truncate text-center text-sm">{{ item.name }}</span></Button><Card v-else :id="`resource-${item.id}`" :key="item.id" class="flex min-w-0 flex-col gap-4 p-5 transition-shadow" :class="focusedId===item.id?'ring-2 ring-primary':''">
+        <div v-if="shownResources.length" :class="batchMode?'grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-4':launcherLayout">
+          <ContextMenu v-for="(item,index) in shownResources" :key="item.id"><ContextMenuTrigger as-child><Button v-if="!batchMode" :id="`resource-${item.id}`" variant="ghost" :class="[launcherTile,focusedId===item.id?'ring-2 ring-primary':'']" :disabled="!!openingId" @click="launch(item)"><span v-if="displayMode==='list'" class="w-7 shrink-0 text-center text-sm tabular-nums text-muted-foreground">{{ shownCommon.length+index+1 }}</span><img v-if="item.icon_data" :src="item.icon_data" alt="" :class="launcherIcon"/><component :is="iconFor(item.kind)" v-else :class="[launcherIcon,'text-primary']"/><span class="min-w-0 flex-1" :class="displayMode==='grid'?'w-full text-center':'text-left'"><span class="block truncate text-sm">{{ item.name }}</span><span v-if="resourceHealth[item.id]===false" class="block text-xs text-destructive">路径失效 · 点击重新定位</span><span v-if="displayMode==='list'" class="mt-1 block truncate text-xs text-muted-foreground">{{ item.target }}</span></span><span v-if="displayMode==='list'" class="w-40 shrink-0 truncate text-right text-sm text-muted-foreground">{{ item.kind==='app'?(publishers[item.id]||'未知开发者'):'—' }}</span></Button><Card v-else :id="`resource-${item.id}`" :key="item.id" class="flex min-w-0 flex-col gap-4 p-5 transition-shadow" :class="focusedId===item.id?'ring-2 ring-primary':''">
             <div class="flex min-w-0 items-start gap-3"><Checkbox v-if="batchMode" :model-value="selectedIds.includes(item.id)" :aria-label="`选择 ${item.name}`" @update:model-value="toggleSelection(item.id)"/><div class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"><img v-if="item.icon_data" :src="item.icon_data" alt="" class="size-8 object-contain" /><component :is="iconFor(item.kind)" v-else /></div><div class="min-w-0 flex-1"><h2 class="truncate font-semibold">{{ item.name }}</h2><p class="mt-1 truncate text-xs text-muted-foreground">{{ item.target }}</p></div><Button variant="ghost" size="icon" :aria-label="item.is_favorite?'取消收藏':'收藏'" @click="favorite(item)"><Heart :class="item.is_favorite?'fill-primary text-primary':'text-muted-foreground'" /></Button></div>
-            <div class="flex flex-wrap items-center justify-between gap-2"><Badge>{{ item.kind==='app'?'应用':item.kind==='web'?'网页':'文件' }}</Badge><span class="flex gap-1"><Button v-if="item.kind!=='web'" variant="ghost" size="sm" @click="relocate(item)">重新定位</Button><Button variant="ghost" size="icon" aria-label="编辑" @click="edit(item)"><Pencil /></Button><Button variant="ghost" size="icon" aria-label="删除" @click="remove(item)"><Trash2 /></Button><Button variant="outline" size="sm" @click="launch(item)">打开<ArrowUpRight data-icon="inline-end" /></Button></span></div>
+            <div class="flex flex-wrap items-center justify-between gap-2"><Badge>{{ item.kind==='app'?'应用':item.kind==='web'?'网页':'文件' }}</Badge><span class="flex gap-1"><Button v-if="item.kind!=='web'" variant="ghost" size="sm" @click="relocate(item)">重新定位</Button><Button variant="ghost" size="icon" aria-label="编辑" @click="edit(item)"><Pencil /></Button><Button variant="danger" size="icon" aria-label="删除" @click="remove(item)"><Trash2 /></Button><Button variant="outline" size="sm" @click="launch(item)">打开<ArrowUpRight data-icon="inline-end" /></Button></span></div>
           </Card></ContextMenuTrigger>
           <ContextMenuContent class="w-52"><ContextMenuGroup>
             <ContextMenuItem @select="launch(item)">打开</ContextMenuItem><ContextMenuItem :disabled="item.kind==='web'" @select="reveal(item)">打开所在文件夹</ContextMenuItem><ContextMenuItem @select="copyPath(item)">复制{{ item.kind==='web'?'网址':'路径' }}</ContextMenuItem><ContextMenuItem @select="favorite(item)">{{ item.is_favorite?'取消收藏':'收藏' }}</ContextMenuItem>
@@ -165,7 +196,8 @@ function scrollFilters(event:WheelEvent){const element=event.currentTarget as HT
             <ContextMenuItem @select="edit(item)">编辑名称、别名和路径</ContextMenuItem><ContextMenuItem @select="batchMode=true;toggleSelection(item.id)">选择 / 取消选择</ContextMenuItem>
           </ContextMenuGroup><ContextMenuSeparator/><ContextMenuGroup><ContextMenuItem variant="destructive" @select="remove(item)">从应用库移除</ContextMenuItem></ContextMenuGroup></ContextMenuContent></ContextMenu>
         </div>
-        <Card v-else-if="!shownCommon.length" class="flex min-h-64 flex-col items-center justify-center p-8 text-center"><AppWindow class="mb-4 text-primary" /><h2 class="font-semibold">{{ store.resources.length?'没有匹配的启动项':'还没有启动项' }}</h2><p class="mt-2 max-w-sm text-sm text-muted-foreground">{{ store.resources.length?'试试切换筛选条件，或调整搜索关键词。':'手动添加应用、网页或文件，也可以扫描常见已安装应用并选择导入。' }}</p><Button class="mt-5" variant="outline" @click="addResource"><Plus data-icon="inline-start" />添加启动项</Button></Card>
+        <Card v-else-if="!shownCommon.length" class="flex min-h-64 flex-col items-center justify-center p-8 text-center"><AppWindow class="mb-4 text-primary" /><h2 class="font-semibold">{{ activeFilter==='common'?'没有启用的常用启动项':store.resources.length?'没有匹配的启动项':'还没有启动项' }}</h2><p class="mt-2 max-w-sm text-sm text-muted-foreground">{{ activeFilter==='common'?'在配置中开启常用启动项，或调整搜索关键词。':store.resources.length?'试试切换筛选条件，或调整搜索关键词。':'手动添加应用、网页或文件，也可以扫描常见已安装应用并选择导入。' }}</p><Button v-if="activeFilter==='common'" class="mt-5" variant="outline" @click="commonDialogOpen=true"><Settings data-icon="inline-start" />配置常用启动项</Button><Button v-else class="mt-5" variant="outline" @click="addResource"><Plus data-icon="inline-start" />添加启动项</Button></Card>
+        </div></ScrollArea>
       </TabsContent>
     </Tabs>
   </div>

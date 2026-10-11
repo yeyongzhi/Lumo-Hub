@@ -1,3 +1,8 @@
+mod local_files;
+mod note_files;
+mod desktop;
+mod reminders;
+mod home_feeds;
 mod backup;
 mod search;
 mod recycle;
@@ -56,6 +61,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let paths = storage::resolve_paths().map_err(std::io::Error::other)?;
@@ -72,7 +78,7 @@ pub fn run() {
                 Err("需要恢复数据目录".to_string())
             };
             let (connection, settings) = match database {
-                Ok(connection) => (connection, storage::load_settings(&paths.data_dir)),
+                Ok(mut connection) => { let mut settings=storage::load_settings(&paths.data_dir); note_files::migrate(&paths.data_dir,&mut connection,&settings).map_err(std::io::Error::other)?; note_files::load_tags(&paths.data_dir,&mut settings).map_err(std::io::Error::other)?; storage::save_settings(&paths.data_dir,&settings).map_err(std::io::Error::other)?; (connection,settings) },
                 Err(error) => {
                     if recovery_error.is_none() {
                         recovery_error = Some(error);
@@ -94,6 +100,8 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 shortcut_error: Mutex::new(None), backup_error: Mutex::new(None),
             });
+            desktop::setup(app.handle()).map_err(std::io::Error::other)?;
+            reminders::start(app.handle().clone());
             launcher::sync(app.handle());
             automatic_backup::start(app.handle().clone());
             Ok(())
@@ -108,11 +116,12 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            local_files::read_local,local_files::write_local,desktop::close_main, desktop::export_markdown,
             search::search_resources,
             recycle::list_trash, recycle::restore_trash, recycle::purge_trash,
             launcher::show_launcher, launcher::hide_launcher, launcher::open_startup_view, launcher::open_main_page, launcher::configure_launcher, launcher::launcher_status,
             automatic_backup::run_auto_backup, automatic_backup::auto_backup_status,
-            library_actions::reveal_resource, library_actions::batch_resources,
+            library_actions::resource_health, library_actions::reveal_resource, library_actions::batch_resources,
             commands::bootstrap_state,
             commands::recover_data_directory,
             commands::clean_uninstall,
@@ -141,9 +150,12 @@ pub fn run() {
             commands::delete_group,
             commands::move_resource,
             commands::scan_applications,
+            commands::resource_publishers,
             commands::import_scan_candidates,
             commands::launch_resource,
             commands::launch_common,
+            home_feeds::fetch_home_feed,
+            commands::common_launcher_icons,
             commands::relocate_resource,
             commands::search_all,
             commands::move_data_directory,

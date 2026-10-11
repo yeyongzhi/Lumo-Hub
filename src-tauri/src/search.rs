@@ -54,6 +54,36 @@ pub fn find_resources(db: &Connection, query: &str) -> Result<Vec<SearchResult>,
     Ok(results)
 }
 
+
+pub fn find_all(db:&Connection,query:&str)->Result<Vec<SearchResult>,String>{
+    let query=query.trim();if query.is_empty(){return Ok(vec![])}
+    let escaped=query.replace('\\',"\\\\").replace('%',"\\%").replace('_',"\\_");
+    let pattern=format!("%{escaped}%");let prefix=format!("{escaped}%");
+    let mut results=find_resources(db,query)?;
+    for (table,kind,column) in [("notes","note","content"),("stickies","sticky","content"),("countdowns","countdown","description")] {
+        let subtitle=if kind=="countdown"{"target_date"}else{"substr(content,1,120)"};
+        let sql=format!("SELECT id,title,{subtitle} FROM {table} WHERE title LIKE ?1 ESCAPE '\\' OR COALESCE({column},'') LIKE ?1 ESCAPE '\\' ORDER BY lower(title)=lower(?2) DESC,lower(title) LIKE lower(?3) ESCAPE '\\' DESC,updated_at DESC LIMIT 12");
+        let mut statement=db.prepare(&sql).map_err(|e|e.to_string())?;
+        let rows=statement.query_map(rusqlite::params![pattern,query,prefix],|r|Ok(SearchResult{id:r.get(0)?,title:r.get(1)?,subtitle:r.get(2)?,kind:kind.into()})).map_err(|e|e.to_string())?;
+        results.extend(rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e|e.to_string())?);
+    }
+    let query=query.to_lowercase();
+    results.sort_by_key(|item|if item.title.to_lowercase()==query{0}else if item.title.to_lowercase().starts_with(&query){1}else{2});
+    Ok(results)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test] fn unified_search_contains_stickies_and_literal_patterns(){
+        let db=crate::db::open(std::path::Path::new(":memory:")).unwrap();
+        db.execute("INSERT INTO stickies(id,title,content,created_at,updated_at) VALUES('s','旅行清单','买票','now','now')",[]).unwrap();
+        db.execute("INSERT INTO notes(id,title,content,created_at,updated_at) VALUES('n','旅行','100% 完成','now','now')",[]).unwrap();
+        let result=find_all(&db,"旅行").unwrap();assert_eq!(result[0].title,"旅行");assert!(result.iter().any(|item|item.kind=="sticky"));
+        assert_eq!(find_all(&db,"%").unwrap().len(),1);
+        assert!(find_all(&db,"   ").unwrap().is_empty());
+    }
+}
+
 #[tauri::command]
 pub fn search_resources(
     state: State<'_, AppState>,

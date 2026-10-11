@@ -60,7 +60,7 @@ pub fn restore_trash(state: State<'_, AppState>, id: String) -> Result<(), Strin
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .map_err(|_| "回收站内容不存在")?;
-    let table = table(&kind)?;
+    let table = table(&kind)?; if kind=="note" {let note:crate::models::Note=serde_json::from_str(&payload).map_err(|e|e.to_string())?;let root=state.data_dir.lock().map_err(|_|"数据目录不可用")?.clone();if crate::note_files::list(&root)?.iter().any(|(n,_)|n.id==note.id){return Err("同 ID 笔记已存在".into())}let value:serde_json::Value=serde_json::from_str(&payload).map_err(|e|e.to_string())?;let tags=serde_json::from_value(value.get("tags").cloned().unwrap_or(serde_json::json!([]))).map_err(|e|e.to_string())?;crate::note_files::write(&root,&note,tags)?;}
     if kind=="countdown" {
         tx.execute(&format!("INSERT INTO {table}(id,title,description,target_date,repeat_type,created_at,updated_at) SELECT json_extract(?1,'$.id'),json_extract(?1,'$.title'),json_extract(?1,'$.description'),json_extract(?1,'$.target_date'),json_extract(?1,'$.repeat_type'),json_extract(?1,'$.created_at'),json_extract(?1,'$.updated_at')"),[&payload])
     } else {

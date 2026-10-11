@@ -78,3 +78,9 @@ pub fn batch_resources(
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn resource_health(state: State<'_,AppState>)->Result<std::collections::HashMap<String,bool>,String>{
+    let rows={let db=state.db.lock().map_err(|_|"数据库不可用")?;let mut stmt=db.prepare("SELECT id,target FROM resources WHERE kind!='web'").map_err(|e|e.to_string())?;let rows=stmt.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?))).map_err(|e|e.to_string())?;rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e|e.to_string())?};
+    tauri::async_runtime::spawn_blocking(move||{let links=crate::app_scan::resolve_shortcuts(&rows.iter().map(|(_,target)|target.clone()).collect::<Vec<_>>()).unwrap_or_default();rows.into_iter().map(|(id,target)|{let exists=std::path::Path::new(&target).exists()&&links.get(&crate::app_scan::path_key(&target)).is_none_or(|link|std::path::Path::new(&link.target).exists());(id,exists)}).collect()}).await.map_err(|e|e.to_string())
+}

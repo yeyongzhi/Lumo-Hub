@@ -15,7 +15,7 @@ pub fn open(path: &Path) -> Result<Connection, String> {
     let schema_version: i64 = connection
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .map_err(|e| e.to_string())?;
-    if schema_version > 3 {
+    if schema_version > 4 {
         return Err(format!(
             "数据库版本 {schema_version} 高于此应用支持的版本。请安装更新版本的 Lumo-Hub。"
         ));
@@ -70,6 +70,9 @@ pub fn open(path: &Path) -> Result<Connection, String> {
         CREATE TABLE recycle_bin (id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL, payload TEXT NOT NULL, deleted_at TEXT NOT NULL);
         PRAGMA user_version=3; COMMIT;").map_err(|e| format!("升级搜索和回收站失败：{e}"))?;
     }
+    if schema_version < 4 {
+        connection.execute_batch("BEGIN IMMEDIATE; CREATE TABLE reminder_deliveries (key TEXT PRIMARY KEY, delivered_at TEXT NOT NULL); PRAGMA user_version=4; COMMIT;").map_err(|e|format!("升级提醒记录失败：{e}"))?;
+    }
     Ok(connection)
 }
 
@@ -119,7 +122,7 @@ mod tests {
         }
         {
             let db = open(&file.0).unwrap();
-            assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 3);
+            assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 4);
             let saved: (String, i64, String, Option<String>) = db.query_row(
                 "SELECT name,is_favorite,icon_path,last_opened_at FROM resources WHERE id='app-1'", [],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
@@ -130,7 +133,7 @@ mod tests {
         }
         let db = open(&file.0).unwrap();
         assert_eq!(db.query_row("SELECT last_opened_at FROM resources", [], |r| r.get::<_, String>(0)).unwrap(), "2026-10-01T07:30:00Z");
-        assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 3);
+        assert_eq!(db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 4);
     }
 
     #[test]

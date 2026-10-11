@@ -27,7 +27,7 @@ const contentItems=computed(()=>items.value.filter(item=>item.kind!=='resource')
 const selectedId=computed(()=>items.value[selected.value]?.id)
 function resource(id:string){return resources.value.find(item=>item.id===id)}
 function resourceIcon(id:string){const kind=resource(id)?.kind;return kind==='web'?Globe:kind==='file'?FileText:AppWindow}
-function icon(kind:string){return kind==='note'?NotebookPen:kind==='countdown'?CalendarDays:FileText}
+function icon(kind:string){return kind==='note'?NotebookPen:kind==='sticky'?StickyNote:kind==='countdown'?CalendarDays:FileText}
 async function refresh(){
   const version=++generation
   if(!query.value.trim()){results.value=[];selected.value=0;return}
@@ -49,7 +49,7 @@ async function opened(){
 watch(query,()=>{if(timer)clearTimeout(timer);results.value=[];++generation;timer=setTimeout(refresh,100)})
 async function activate(item:SearchResult){
   if(busy.value)return;busy.value=true
-  try{if(item.kind==='resource'){await api.launchResource(item.id);await api.hideLauncher()}else await api.openMainPage(item.kind==='note'?'notes':'countdowns',item.id)}
+  try{if(item.kind==='resource'){await api.launchResource(item.id);await api.hideLauncher()}else await api.openMainPage(item.kind==='note'?'notes':item.kind==='sticky'?'stickies':'countdowns',item.id)}
   catch(e){error.value=String(e)}finally{busy.value=false}
 }
 async function main(page='home',id:string|null=null){try{await api.openMainPage(page,id)}catch(e){error.value=String(e)}}

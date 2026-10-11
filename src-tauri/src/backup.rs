@@ -67,8 +67,8 @@ fn write_backup_archive(
     let mut files = vec![
         serde_json::json!({"path":"app.db","size":fs::metadata(snapshot_path).map_err(|e|e.to_string())?.len()}),
     ];
-    if root.join("app.json").exists() {
-        files.push(serde_json::json!({"path":"app.json","size":fs::metadata(root.join("app.json")).map_err(|e|e.to_string())?.len()}));
+    if root.join("setting.json").exists() {
+        files.push(serde_json::json!({"path":"setting.json","size":fs::metadata(root.join("setting.json")).map_err(|e|e.to_string())?.len()}));
     }
     let icons = root.join("icons");
     if icons.exists() {
@@ -85,7 +85,8 @@ fn write_backup_archive(
             }
         }
     }
-    let mut zip = ZipWriter::new(file);
+    for name in ["tags.json","notes","cache"] {let p=root.join(name);if p.exists(){for entry in WalkDir::new(&p).follow_links(false){let entry=entry.map_err(|e|e.to_string())?;if entry.file_type().is_file(){let rel=entry.path().strip_prefix(root).map_err(|e|e.to_string())?.to_string_lossy().replace('\\',"/");files.push(serde_json::json!({"path":rel,"size":entry.metadata().map_err(|e|e.to_string())?.len()}));}}}}
+    let extra=files.clone();let mut zip = ZipWriter::new(file);
     let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
     let manifest = serde_json::json!({"format":"lumo-hub-backup","format_version":1,"created_at":chrono::Utc::now().to_rfc3339(),"app_version":env!("CARGO_PKG_VERSION"),"files":files});
     zip.start_file("manifest.json", options)
@@ -96,9 +97,9 @@ fn write_backup_archive(
             .as_bytes(),
     )
     .map_err(|e| e.to_string())?;
-    add_file(&mut zip, "app.db", snapshot_path, options)?;
-    if root.join("app.json").exists() {
-        add_file(&mut zip, "app.json", &root.join("app.json"), options)?;
+    add_file(&mut zip, "app.db", snapshot_path, options)?;for entry in extra {let name=entry["path"].as_str().ok_or("无效路径")?;if name=="tags.json"||name.starts_with("notes/")||name.starts_with("cache/"){add_file(&mut zip,name,&root.join(name),options)?;}}
+    if root.join("setting.json").exists() {
+        add_file(&mut zip, "setting.json", &root.join("setting.json"), options)?;
     }
     let icons = root.join("icons");
     if icons.exists() {
@@ -183,7 +184,7 @@ fn rollback_restore_files(
     } else {
         let _ = fs::remove_dir_all(&icons);
     }
-    let settings = current.join("app.json");
+    let settings = current.join("setting.json");
     if had_settings {
         if settings_hold.exists() {
             let _ = fs::remove_file(&settings);
@@ -275,7 +276,7 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
                 has_manifest = true;
                 continue;
             }
-            if name != "app.db" && name != "app.json" && !name.starts_with("icons/") {
+            if name != "app.db" && name != "setting.json" && name != "app.json" && name != "tags.json" && !name.starts_with("notes/") && !name.starts_with("cache/") && !name.starts_with("icons/") {
                 return Err("备份包含未知文件，已停止恢复。".into());
             }
             if actual_files.contains_key(&name) {
@@ -312,7 +313,7 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
         if integrity != "ok" {
             return Err(format!("备份数据库校验失败：{integrity}"));
         }
-        drop(check);
+        drop(check);if !stage.join("setting.json").exists()&&stage.join("app.json").exists(){fs::rename(stage.join("app.json"),stage.join("setting.json")).map_err(|e|e.to_string())?;}let mut check=db::open(&stage.join("app.db"))?;let settings=storage::load_settings(&stage);crate::note_files::migrate(&stage,&mut check,&settings)?;storage::save_settings(&stage,&settings)?;
         Ok::<(), String>(())
     })();
     if let Err(error) = restore_result {
@@ -329,6 +330,7 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
         let _ = fs::remove_dir_all(&stage);
         return Err(error);
     }
+    let mut extras=ExtraSwap::new(&current,&stage)?;
     let mut conn = state.db.lock().map_err(|_| "数据库不可用")?;
     let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
         r.get::<_, i64>(0)
@@ -341,7 +343,7 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
     let db_hold = current.join(format!(".app-db-pre-restore-{}", uuid::Uuid::new_v4()));
     let icons = current.join("icons");
     let icons_hold = current.join(format!(".icons-pre-restore-{}", uuid::Uuid::new_v4()));
-    let settings = current.join("app.json");
+    let settings = current.join("setting.json");
     let settings_hold = current.join(format!(".app-json-pre-restore-{}", uuid::Uuid::new_v4()));
     let had_icons = icons.exists();
     let had_settings = settings.exists();
@@ -382,8 +384,8 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
         if had_settings {
             fs::rename(&settings, &settings_hold).map_err(|e| format!("无法暂存旧设置：{e}"))?
         }
-        if stage.join("app.json").exists() {
-            fs::rename(stage.join("app.json"), &settings)
+        if stage.join("setting.json").exists() {
+            fs::rename(stage.join("setting.json"), &settings)
                 .map_err(|e| format!("无法恢复设置：{e}"))?
         }
         Ok::<(), String>(())
@@ -425,7 +427,7 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
             return Err(error);
         }
     };
-    *conn = new_conn;
+    *conn = new_conn;extras.commit();
     let new_settings = storage::load_settings(&current);
     *state.settings.lock().map_err(|_| "设置状态不可用")? = new_settings;
     crate::launcher::sync(&app);
@@ -434,4 +436,23 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
     let _ = fs::remove_file(settings_hold);
     let _ = fs::remove_dir_all(stage);
     Ok(())
+}
+
+struct ExtraSwap {root:PathBuf,held:Vec<(String,Option<PathBuf>)>,committed:bool}
+impl ExtraSwap {
+ fn new(root:&Path,stage:&Path)->Result<Self,String>{let mut swap=Self{root:root.into(),held:vec![],committed:false};for name in ["notes","tags.json","cache"]{let p=root.join(name);let hold=if p.exists(){let hold=root.join(format!(".restore-{}-{}",name,uuid::Uuid::new_v4()));fs::rename(&p,&hold).map_err(|e|e.to_string())?;Some(hold)}else{None};swap.held.push((name.into(),hold));if stage.join(name).exists(){fs::rename(stage.join(name),p).map_err(|e|e.to_string())?;}}Ok(swap)}
+ fn commit(&mut self){self.committed=true;}
+}
+impl Drop for ExtraSwap {fn drop(&mut self){for (name,hold) in &self.held{let p=self.root.join(name);let remove=|p:&Path|{if p.is_dir(){let _=fs::remove_dir_all(p);}else{let _=fs::remove_file(p);}};if self.committed{if let Some(hold)=hold{remove(hold)}}else{remove(&p);if let Some(hold)=hold{let _=fs::rename(hold,p);}}}}}
+#[cfg(test)]
+mod file_backup_tests {
+ use super::*;
+ #[test]
+ fn archive_contains_markdown_tags_and_unified_settings(){
+  let root=std::env::temp_dir().join(format!("lumo-backup-test-{}",uuid::Uuid::new_v4()));fs::create_dir_all(root.join("notes")).unwrap();
+  fs::write(root.join("notes/example.md"),"---\nid: example\ntags: [工作]\n---\n正文").unwrap();fs::write(root.join("notes/.migrated"),"1").unwrap();fs::write(root.join("setting.json"),"{}").unwrap();fs::write(root.join("tags.json"),"[\"工作\"]").unwrap();fs::write(root.join("snapshot.db"),"snapshot").unwrap();
+  let target=root.join("test.lumo");write_backup_archive(&root,&root.join("snapshot.db"),&target).unwrap();let mut zip=ZipArchive::new(File::open(target).unwrap()).unwrap();
+  for name in ["app.db","setting.json","tags.json","notes/example.md","notes/.migrated"]{assert!(zip.by_name(name).is_ok(),"{name}");}
+  drop(zip);fs::remove_dir_all(root).unwrap();
+ }
 }
