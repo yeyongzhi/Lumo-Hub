@@ -19,6 +19,7 @@ const newsAge=computed(()=>{if(props.kind!=='news'||!data.value?.date)return '';
 let version = 0
 const loadedAt = ref(0)
 watch(loadedAt, value => emit('updated', value ? new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+' 更新' : ''))
+const stale=computed(()=>!!loadedAt.value&&currentDay.value.getTime()-loadedAt.value>(props.kind==='weather'?30*60_000:props.kind==='news'?6*60*60_000:60*60_000))
 const cacheKey = () => `lumo-feed-${props.kind}-${props.kind === 'weather' ? city.value : ''}`
 async function readCache() {
   data.value = null; loadedAt.value = 0
@@ -49,7 +50,7 @@ async function saveCity() {
   version++; loading.value = false; await readCache(); void load(true)
 }
 watch(() => props.refreshKey, () => void load(true))
-onMounted(async () => {window.addEventListener('online',networkChanged);window.addEventListener('offline',networkChanged);dayTimer=setInterval(()=>{currentDay.value=new Date()},60000);const savedCity=await readLocal<string>('lumo-weather-city');city.value=savedCity||'';cityDraft.value=city.value;changingCity.value=props.kind==='weather'&&savedCity===null;await readCache(); void load() })
+onMounted(async () => {window.addEventListener('online',networkChanged);window.addEventListener('offline',networkChanged);dayTimer=setInterval(()=>{currentDay.value=new Date();void load()},60000);const savedCity=await readLocal<string>('lumo-weather-city');city.value=savedCity||'';cityDraft.value=city.value;changingCity.value=props.kind==='weather'&&savedCity===null;await readCache(); void load() })
 onBeforeUnmount(() => { version++;if(dayTimer)clearInterval(dayTimer);window.removeEventListener('online',networkChanged);window.removeEventListener('offline',networkChanged) })
 </script>
 <template>
@@ -71,7 +72,7 @@ onBeforeUnmount(() => { version++;if(dayTimer)clearInterval(dayTimer);window.rem
     <template v-else-if="data">
       <p class="whitespace-pre-wrap break-words leading-7" :class="kind==='poetry'?'text-lg font-medium':'text-sm'">{{ data.content }}</p>
     </template>
-    <p v-if="loading" role="status" class="text-xs text-muted-foreground">{{ data?'正在刷新…':'正在获取内容…' }}</p>
+    <p v-if="stale&&data" class="text-xs text-muted-foreground">上次更新：{{ new Date(loadedAt).toLocaleString('zh-CN') }} · 内容可能已过期</p><p v-if="loading" role="status" class="text-xs text-muted-foreground">{{ data?'正在刷新…':'正在获取内容…' }}</p>
     <details v-if="error" class="shrink-0 text-sm leading-6 text-muted-foreground"><summary class="cursor-pointer">{{ data?'暂时无法更新，已保留上次内容':'暂时无法获取内容' }} · 点击右上角重试</summary><p class="mt-1 break-words text-xs">{{ error }}</p></details>
     <div v-if="data&&(kind!=='weather'||offline||error)" class="mt-auto flex shrink-0 flex-wrap items-baseline justify-end gap-x-4 gap-y-2 text-sm leading-6 text-muted-foreground" :class="kind==='news'?'border-t border-border pt-3':kind==='weather'?'pt-1':'pt-3'">
       <span v-if="newsAge||offline||error" class="text-sm">{{ newsAge }}{{ newsAge&&(offline||error)?' · ':'' }}{{ offline?'离线内容':error?'缓存内容':'' }}</span>

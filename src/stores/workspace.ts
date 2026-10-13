@@ -1,4 +1,4 @@
-import { migrateLegacyStorage } from '@/lib/local-files'
+import { migrateLegacyStorage, writeLocal } from '@/lib/local-files'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { api } from '@/lib/api'
@@ -52,10 +52,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function reload() {
+    await settingChain
     const [n, s, c, r, g] = await Promise.all([
       api.listNotes(), api.listStickies(), api.listCountdowns(), api.listResources(), api.listGroups(),
     ])
-    const currentSettings=await api.bootstrap();settings.value=currentSettings.settings;
+    const currentSettings=await api.bootstrap()
+    settings.value={...currentSettings.settings,...Object.fromEntries(pendingSettings)}
+    for(const key of confirmedSettings.keys()){if(!pendingSettings.has(key))confirmedSettings.set(key,currentSettings.settings[key as keyof AppSettings])}
     notes.value = n
     stickies.value = s
     countdowns.value = c
@@ -71,21 +74,46 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!recoveryError.value) await reload()
   }
 
-  async function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
-    const previous = settings.value[key]
+  let settingChain: Promise<unknown> = Promise.resolve()
+  const settingVersions = new Map<string, number>()
+  const confirmedSettings = new Map<string, unknown>()
+  const pendingSettings = new Map<string, unknown>()
+  function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
+    if (!confirmedSettings.has(key)) confirmedSettings.set(key, settings.value[key])
+    const version = (settingVersions.get(key) ?? 0) + 1
+    settingVersions.set(key, version)
+    pendingSettings.set(key, value)
     settings.value = { ...settings.value, [key]: value }
-    try {
-      settings.value = await api.setSetting(key, value)
-    } catch (error) {
-      settings.value = { ...settings.value, [key]: previous }
-      notify(`设置保存失败：${String(error)}`)
-      throw error
-    }
+    const job = settingChain.then(async () => {
+      try {
+        const saved = await api.setSetting(key, value)
+        confirmedSettings.set(key, saved[key])
+        // Other fields may have optimistic changes queued after this request.
+        if (settingVersions.get(key) === version) {
+          settings.value = { ...settings.value, [key]: saved[key] }
+          pendingSettings.delete(key)
+        }
+      } catch (error) {
+        if (settingVersions.get(key) === version) {
+          settings.value = { ...settings.value, [key]: confirmedSettings.get(key) }
+          pendingSettings.delete(key)
+        }
+        notify(`设置保存失败：${String(error)}`)
+        throw error
+      }
+    })
+    settingChain = job.catch(() => {})
+    return job
   }
 
   async function completeWelcome() {
     try { settings.value = await api.completeWelcome() }
     catch (error) { notify(`无法保存欢迎流程：${String(error)}`) }
+  }
+
+  async function saveClient(key: string, value: unknown) {
+    await writeLocal(key, value)
+    settings.value = { ...settings.value, client: { ...settings.value.client, [key]: value } }
   }
 
   async function launchResource(id: string) {
@@ -99,8 +127,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function flushPendingSaves() {
+    await settingChain
     await Promise.all([...pendingSaves].map(flush => flush()))
   }
 
-  return { initialized, cleanUninstall, startupError, recoveryError, message, settings, bootstrap, notes, stickies, countdowns, resources, groups, searchTarget, initialize, recoverDataDirectory, reload, notify, setSetting, completeWelcome, launchResource, registerPendingSave, flushPendingSaves }
+  return { initialized, cleanUninstall, startupError, recoveryError, message, settings, bootstrap, notes, stickies, countdowns, resources, groups, searchTarget, initialize, recoverDataDirectory, reload, notify, setSetting, saveClient, completeWelcome, launchResource, registerPendingSave, flushPendingSaves }
 })

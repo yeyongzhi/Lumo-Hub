@@ -1,7 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
+import type { ResourceKind, LaunchOptions } from './types'
 import type { AppSettings, BootstrapInfo, Countdown, Note, Resource, ResourceGroup, ScanCandidate, SearchResult, Sticky, TrashItem, BackupStatus } from './types'
 
 export const api = {
+  findDuplicate: (kind:ResourceKind,target:string,exclude:string|null=null) => invoke<string|null>('find_duplicate',{kind,target,exclude}),
+  previewTargets: (paths:string[]) => invoke<{name:string;target:string;kind:ResourceKind;icon_data:string|null}[]>('preview_targets',{paths}),
+  saveLaunchOptions: (id:string,options:LaunchOptions) => invoke<void>('save_launch_options',{id,options}),
+  readIcon: (path:string) => invoke<string>('read_icon',{path}),
+  reorderGroups: (ids:string[]) => invoke<void>('reorder_groups',{ids}),
   resourceHealth: () => invoke<Record<string,boolean>>('resource_health'),
   closeMain: () => invoke<void>('close_main'),
   exportMarkdown: (id:string,path:string) => invoke<void>('export_markdown',{id,path}),
@@ -23,17 +29,18 @@ export const api = {
   purgeTrash: (id: string | null) => invoke<void>('purge_trash', { id }),
   autoBackupStatus: () => invoke<BackupStatus>('auto_backup_status'),
   runAutoBackup: () => invoke<string | null>('run_auto_backup'),
+  testReminderNotification: () => invoke<void>('test_notification'),
   bootstrap: () => invoke<{ bootstrap: BootstrapInfo; settings: AppSettings; clean_uninstall: boolean; recovery_error: string | null }>('bootstrap_state'),
   recoverDataDirectory: (newPath: string) => invoke<BootstrapInfo>('recover_data_directory', { newPath }),
   cleanUninstall: () => invoke<void>('clean_uninstall'),
   setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => invoke<AppSettings>('set_setting', { key, value }),
   completeWelcome: () => invoke<AppSettings>('complete_welcome'),
   listNotes: () => invoke<Note[]>('list_notes'),
-  createNote: (title: string) => invoke<Note>('create_note', { title }),
+  createNote: (title: string, content='') => invoke<Note>('create_note', { title, content }),
   updateNote: (id: string, title: string, content: string) => invoke<void>('update_note', { id, title, content }),
   deleteNote: (id: string) => invoke<void>('delete_note', { id }),
   listStickies: () => invoke<Sticky[]>('list_stickies'),
-  createSticky: (title: string) => invoke<Sticky>('create_sticky', { title }),
+  createSticky: (title: string, content='') => invoke<Sticky>('create_sticky', { title, content }),
   updateSticky: (id: string, title: string, content: string) => invoke<void>('update_sticky', { id, title, content }),
   deleteSticky: (id: string) => invoke<void>('delete_sticky', { id }),
   listCountdowns: () => invoke<Countdown[]>('list_countdowns'),
@@ -42,7 +49,7 @@ export const api = {
   deleteCountdown: (id: string) => invoke<void>('delete_countdown', { id }),
   listResources: () => invoke<Resource[]>('list_resources'),
   listGroups: () => invoke<ResourceGroup[]>('list_groups'),
-  createResource: (value: Pick<Resource, 'name' | 'kind' | 'target' | 'group_id' | 'aliases'>) => invoke<Resource>('create_resource', { value }),
+  createResource: (value: Pick<Resource, 'name' | 'kind' | 'target' | 'group_id' | 'aliases'> & {allow_duplicate?:boolean}) => invoke<Resource>('create_resource', { value }),
   updateResource: (value: Resource) => invoke<void>('update_resource', { value }),
   deleteResource: (id: string) => invoke<void>('delete_resource', { id }),
   toggleFavorite: (id: string) => invoke<void>('toggle_favorite', { id }),

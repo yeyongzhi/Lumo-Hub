@@ -15,7 +15,7 @@ const progress=ref(0)
 const updateAvailable=ref<Update|null>(null)
 const status=ref('')
 onMounted(async()=>{try{version.value=await getVersion()}catch{version.value='0.1.0'}})
-async function checkUpdate(){checking.value=true;status.value='';updateAvailable.value=null;try{updateAvailable.value=await check();status.value=updateAvailable.value?`发现新版本 ${updateAvailable.value.version}`:'当前已是最新版本。'}catch(error){status.value=`检查更新失败：${String(error)}`}finally{checking.value=false}}
+async function checkUpdate(){checking.value=true;status.value='';updateAvailable.value=null;try{updateAvailable.value=await check();status.value=updateAvailable.value?`发现新版本 ${updateAvailable.value.version}`:'当前已是最新版本。'}catch(error){status.value=/404|not found/i.test(String(error))?'当前发布源尚未提供更新清单，请稍后重试。':`检查更新失败：${String(error)}，可再次点击检查更新重试。`}finally{checking.value=false}}
 async function installUpdate(){if(!updateAvailable.value||!await askConfirmation(`将 Lumo-Hub 更新到 ${updateAvailable.value.version}。用户数据会保留。现在安装吗？`))return;installing.value=true;let received=0;let total=0;try{await updateAvailable.value.downloadAndInstall(event=>{if(event.event==='Started'){total=event.data.contentLength??0}else if(event.event==='Progress'){received+=event.data.chunkLength;if(total>0)progress.value=Math.min(100,Math.round(received/total*100))}else if(event.event==='Finished'){progress.value=100}});await relaunch()}catch(error){status.value=`安装更新失败：${String(error)}`}finally{installing.value=false}}
 </script>
 

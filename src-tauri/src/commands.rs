@@ -341,7 +341,7 @@ pub fn complete_welcome(state: State<'_, AppState>) -> Result<AppSettings, Strin
 #[tauri::command]
 pub fn list_notes(state: State<'_, AppState>) -> Result<Vec<Note>, String> { let root=data_root(&state)?;crate::note_files::load_tags(&root,&mut *state.settings.lock().map_err(|_|"设置不可用")?)?;return Ok(crate::note_files::list(&root)?.into_iter().map(|(n,_)|n).collect());}
 #[tauri::command]
-pub fn create_note(state: State<'_, AppState>, title: String) -> Result<Note, String> {
+pub fn create_note(state: State<'_, AppState>, title: String, content: Option<String>) -> Result<Note, String> {
     let _operation = state
         .data_operation
         .lock()
@@ -355,14 +355,14 @@ pub fn create_note(state: State<'_, AppState>, title: String) -> Result<Note, St
         } else {
             title.trim().into()
         },
-        content: String::new(),
+        content: content.unwrap_or_default(),
         created_at: now.clone(),
         updated_at: now,
     };
     crate::note_files::write(&data_root(&state)?,&note,vec![])?;
     sql(db.execute(
-        "INSERT INTO notes(id,title,content,created_at,updated_at) VALUES(?1,?2,'',?3,?3)",
-        params![note.id, note.title, note.created_at],
+        "INSERT INTO notes(id,title,content,created_at,updated_at) VALUES(?1,?2,?3,?4,?4)",
+        params![note.id, note.title, note.content, note.created_at],
     ))?;
     Ok(note)
 }
@@ -417,7 +417,7 @@ pub fn list_stickies(state: State<'_, AppState>) -> Result<Vec<Sticky>, String> 
 }
 
 #[tauri::command]
-pub fn create_sticky(state: State<'_, AppState>, title: String) -> Result<Sticky, String> {
+pub fn create_sticky(state: State<'_, AppState>, title: String, content: Option<String>) -> Result<Sticky, String> {
     let _operation = state
         .data_operation
         .lock()
@@ -431,13 +431,13 @@ pub fn create_sticky(state: State<'_, AppState>, title: String) -> Result<Sticky
         } else {
             title.trim().into()
         },
-        content: String::new(),
+        content: content.unwrap_or_default(),
         created_at: now.clone(),
         updated_at: now,
     };
     sql(db.execute(
-        "INSERT INTO stickies(id,title,content,created_at,updated_at) VALUES(?1,?2,'',?3,?3)",
-        params![item.id, item.title, item.created_at],
+        "INSERT INTO stickies(id,title,content,created_at,updated_at) VALUES(?1,?2,?3,?4,?4)",
+        params![item.id, item.title, item.content, item.created_at],
     ))?;
     Ok(item)
 }
@@ -557,6 +557,7 @@ pub fn delete_countdown(state: State<'_, AppState>, id: String) -> Result<(), St
 
 #[derive(serde::Deserialize)]
 pub struct ResourceInput {
+    #[serde(default)] pub allow_duplicate: bool,
     pub name: String,
     pub kind: String,
     pub target: String,
@@ -649,6 +650,12 @@ pub fn create_resource(
     validate_resource(&value.kind, &value.target)?;
     let data_dir = data_root(&state)?;
     let db = state.db.lock().map_err(|_| "数据库不可用")?;
+    if value.name.trim().is_empty(){return Err("名称不能为空".into())}
+    if !value.allow_duplicate {
+        let mut stmt=db.prepare("SELECT id,kind,target FROM resources").map_err(|e|e.to_string())?;
+        let rows=stmt.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).map_err(|e|e.to_string())?.collect::<rusqlite::Result<Vec<_>>>().map_err(|e|e.to_string())?;
+        if crate::library_tools::duplicate_id(&rows,&value.kind,&value.target).is_some(){return Err("该目标已存在，请定位已有记录或明确选择创建另一个入口".into())}
+    }
     let now = db::timestamp();
     let id = db::id();
     let icon_path = if value.kind != "web" {
@@ -893,8 +900,11 @@ pub fn launch_resource(app: tauri::AppHandle, state: State<'_, AppState>, id: St
                 .spawn()
                 .map_err(|e| format!("无法打开目标：{e}"))?;
         } else {
-            Command::new(path)
-                .spawn()
+            let options: crate::library_tools::LaunchOptions = state.settings.lock().map_err(|_|"设置不可用")?.client.get(&format!("lumo-resource-options-{id}")).cloned().map(serde_json::from_value).transpose().map_err(|_|"启动选项无效")?.unwrap_or_default();
+            let mut command=Command::new(path);
+            command.args(&options.arguments);
+            if !options.working_directory.is_empty(){command.current_dir(&options.working_directory);}
+            command.spawn()
                 .map_err(|e| format!("无法启动程序：{e}"))?;
         }
     }
@@ -941,7 +951,7 @@ pub fn relocate_resource(
 #[tauri::command]
 pub fn search_all(state: State<'_, AppState>, query: String) -> Result<Vec<SearchResult>, String> {
     let db=state.db.lock().map_err(|_|"数据库不可用")?;
-    let mut result=crate::search::find_all(&db,&query)?;result.retain(|item|item.kind!="note");for (n,_) in crate::note_files::list(&data_root(&state)?)?{if format!("{} {}",n.title,n.content).to_lowercase().contains(&query.to_lowercase()){result.push(SearchResult{id:n.id,title:n.title,subtitle:n.content.chars().take(120).collect(),kind:"note".into()});}}Ok(result)
+    let mut result=crate::search::find_all(&db,&query)?;result.retain(|item|item.kind!="note");for (n,_) in crate::note_files::list(&data_root(&state)?)?{if format!("{} {}",n.title,n.content).to_lowercase().contains(&query.to_lowercase()){result.push(SearchResult{id:n.id,title:n.title,subtitle:crate::search::excerpt(&n.content,&query),kind:"note".into()});}}crate::search::rank(&mut result,&query);Ok(result)
 }
 
 #[tauri::command]

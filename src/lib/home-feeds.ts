@@ -27,7 +27,9 @@ export function parseFeed(kind: FeedKind, raw: unknown): FeedData {
     result.wind = string(current.windspeedKmph)
     result.location = label(area.areaName)
     const codes: Record<string, string> = { '113': '晴', '116': '多云', '119': '阴', '122': '阴', '143': '薄雾', '176': '局部阵雨', '179': '局部降雪', '200': '雷阵雨', '248': '雾', '260': '冻雾', '296': '小雨', '302': '中雨', '308': '大雨', '353': '小阵雨', '356': '阵雨', '389': '雷雨', '338': '大雪' }
-    result.content = codes[string(current.weatherCode)] || label(current.lang_zh) || label(current.weatherDesc)
+    const description=label(current.weatherDesc).toLowerCase()
+    const translations: [RegExp,string][] = [[/smok|haze/,'霾'],[/thunder/,'雷雨'],[/blizzard/,'暴风雪'],[/snow/,'雪'],[/sleet|ice/,'雨夹雪'],[/heavy.*rain/,'大雨'],[/moderate.*rain/,'中雨'],[/drizzle|light.*rain/,'小雨'],[/rain|shower/,'阵雨'],[/fog|mist/,'雾'],[/overcast/,'阴'],[/partly.*cloud/,'多云'],[/cloud/,'多云'],[/sun|clear/,'晴']]
+    result.content = label(current.lang_zh) || codes[string(current.weatherCode)] || translations.find(([pattern])=>pattern.test(description))?.[1] || '天气描述暂不可用'
     if (!result.temperature || !result.content) throw new Error('天气服务暂未返回有效数据')
   } else if (kind === 'news') {
     if (value.code !== 200) throw new Error('新闻服务暂不可用')

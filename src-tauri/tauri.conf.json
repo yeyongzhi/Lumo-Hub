@@ -18,7 +18,7 @@
         "minWidth": 900,
         "minHeight": 640,
         "decorations": false,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ],
     "security": {
@@ -53,7 +53,7 @@
         "installMode": "passive"
       },
       "endpoints": [
-        "https://github.com/OWNER/REPO/releases/latest/download/latest.json"
+        "https://github.com/yeyongzhi/Lumo-Hub/releases/latest/download/latest.json"
       ]
     }
   }

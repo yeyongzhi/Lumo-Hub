@@ -101,3 +101,6 @@ export interface SearchResult {
 
 export interface TrashItem { id: string; kind: 'note' | 'sticky' | 'countdown'; title: string; deleted_at: string }
 export interface BackupStatus { last_backup: string | null; count: number; directory: string; error: string | null }
+
+export interface LaunchOptions { arguments: string[]; working_directory: string; icon_data: string|null }
+export interface LaunchScene { id:string; name:string; resource_ids:string[] }

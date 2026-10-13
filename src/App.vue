@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import QuickCapture from '@/components/QuickCapture.vue'
+import SearchHighlight from '@/components/SearchHighlight.vue'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { confirmation, finishConfirmation, dismissConfirmation, askConfirmation } from '@/lib/confirm'
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { exit } from '@tauri-apps/plugin-process'
@@ -27,6 +30,11 @@ import { useWorkspaceStore } from '@/stores/workspace'
 
 const store=useWorkspaceStore()
 const page=ref<PageId>('home')
+const captureOpen=ref(false), shortcutsOpen=ref(false), captureText=ref('')
+function showCapture(text=''){captureText.value=text;captureOpen.value=true}
+async function addFromSearch(){if(await navigate('library'))await nextTick(()=>window.dispatchEvent(new Event('lumo-new')))}
+async function newItem(){if(page.value==='library'||page.value==='countdowns'){window.dispatchEvent(new Event('lumo-new'));return}showCapture()}
+function keyboard(event:KeyboardEvent){if(event.isComposing||event.repeat)return;if(event.key==='F1'){event.preventDefault();shortcutsOpen.value=true;return}if(event.ctrlKey&&event.key.toLowerCase()==='k'){event.preventDefault();document.querySelector<HTMLInputElement>('[aria-label="全局搜索"]')?.focus();return}if(event.ctrlKey&&event.key.toLowerCase()==='n'){event.preventDefault();void newItem();return}if(event.ctrlKey&&event.key.toLowerCase()==='s'){event.preventDefault();void store.flushPendingSaves().then(()=>store.notify('已保存')).catch(e=>store.notify(String(e)))}}
 const search=ref('')
 const searchResults=ref<SearchResult[]>([])
 const searchOpen=ref(false)
@@ -96,6 +104,7 @@ async function useDefaultRecoveryDirectory(){
   catch(error){store.notify(`恢复失败：${String(error)}`)}
 }
 onMounted(async()=>{
+  window.addEventListener('keydown',keyboard)
   systemTheme.addEventListener('change',updateSystemDark)
   const appWindow=getCurrentWindow()
   removeCloseListener=await appWindow.onCloseRequested(async event=>{
@@ -114,15 +123,17 @@ onMounted(async()=>{
   })
   extraListeners.push(await listen('lumo-quit-requested',async()=>{try{await store.flushPendingSaves();await exit(0)}catch{store.notify('内容未保存，请打开窗口检查保存状态。')}}))
   extraListeners.push(await listen<string>('lumo-reminder',({payload})=>store.notify(payload)))
-  extraListeners.push(await listen<string>('lumo-reminder-error',()=>store.notify('日期提醒发送失败，请检查 Windows 通知设置。')))
+  extraListeners.push(await listen<string>('lumo-reminder-error',({payload})=>store.notify(`日期提醒发送失败：${payload}。可检查 Windows 通知设置。`)))
   await store.initialize()
   if(!store.startupError&&!store.recoveryError&&!store.cleanUninstall) { try{await api.openStartupView()}catch(e){store.notify(String(e))} }
   removeThemeListener=watchSystemTheme(()=>store.settings)
 })
-onUnmounted(()=>{extraListeners.forEach(unlisten=>unlisten());systemTheme.removeEventListener('change',updateSystemDark);if(searchTimer)clearTimeout(searchTimer);removeThemeListener?.();removeCloseListener?.();removeCleanUninstallListener?.();removeResourceListener?.();removeNavigationListener?.()})
+onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.forEach(unlisten=>unlisten());systemTheme.removeEventListener('change',updateSystemDark);if(searchTimer)clearTimeout(searchTimer);removeThemeListener?.();removeCloseListener?.();removeCleanUninstallListener?.();removeResourceListener?.();removeNavigationListener?.()})
 </script>
 
 <template>
+  <Dialog v-model:open="captureOpen"><DialogContent><DialogHeader><DialogTitle>快速记录</DialogTitle><DialogDescription>保存便签、笔记或重要日期。</DialogDescription></DialogHeader><QuickCapture :initial-text="captureText" @saved="item=>{captureOpen=false;openResult(item)}"/></DialogContent></Dialog>
+  <Dialog v-model:open="shortcutsOpen"><DialogContent><DialogHeader><DialogTitle>快捷键与快速启动</DialogTitle><DialogDescription>从键盘快速找到内容和记录想法。</DialogDescription></DialogHeader><div class="flex flex-col gap-3 text-sm"><p>Ctrl + K：全局搜索</p><p>Ctrl + N：当前页面新建 / 快速记录</p><p>Ctrl + S：保存当前内容</p><p>Ctrl + Enter：保存快速记录</p><p>{{ store.settings.launcher.shortcut }}：唤出快捷面板</p><p>方向键选择，Enter 打开，Esc 收起快捷面板</p><Button variant="outline" @click="api.showLauncher();shortcutsOpen=false">试用快捷启动</Button></div></DialogContent></Dialog>
   <ConfirmDialog :open="confirmation.open" title="确认操作" :description="confirmation.description" @update:open="value=>{if(!value)dismissConfirmation()}" @confirm="finishConfirmation(true)" />
   <div v-if="!store.initialized" class="relative flex min-h-screen items-center justify-center bg-background"><div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div><WindowControls class="absolute right-4 top-3" /><div class="flex items-center gap-3 text-sm text-muted-foreground"><span class="size-2 animate-pulse rounded-full bg-primary"></span>正在打开 Lumo-Hub…</div></div>
   <div v-else-if="store.startupError" class="relative flex min-h-screen items-center justify-center bg-background p-8">
@@ -168,19 +179,19 @@ onUnmounted(()=>{extraListeners.forEach(unlisten=>unlisten());systemTheme.remove
       <p class="mb-3 text-sm font-medium text-primary">欢迎来到 Lumo-Hub</p>
       <h1 class="max-w-lg text-4xl font-semibold leading-tight tracking-tight">把日常的小事，<br />安放在一个地方。</h1>
       <p class="mt-5 max-w-md text-base leading-7 text-muted-foreground">记录想法、整理笔记、记住重要日子，也让常用的应用和文件触手可及。你的数据保存在本机。</p>
-      <Button class="mt-8 min-w-36" @click="store.completeWelcome">开始使用<ChevronRight data-icon="inline-end" /></Button>
+      <p class="mt-4 text-sm text-muted-foreground">按 {{ store.settings.launcher.shortcut }} 可随时唤出快捷面板，输入名称后按回车打开。</p><div class="mt-8 flex flex-wrap gap-3"><Button class="min-w-36" @click="store.completeWelcome">开始使用<ChevronRight data-icon="inline-end" /></Button><Button variant="outline" @click="store.completeWelcome().then(()=>api.showLauncher())">试用快捷启动</Button></div>
       <p class="mt-8 text-xs text-muted-foreground">简洁、本地、属于你的工作台</p>
     </Card>
   </main>
   <div v-else class="flex h-dvh overflow-hidden bg-background">
-    <aside class="flex shrink-0 flex-col border-r border-border bg-card/70 transition-[width] duration-200" :style="{width:sidebarCollapsed?'4.5rem':`${store.settings.sidebar_width ?? 240}px`}">
+    <aside class="flex shrink-0 flex-col bg-card/70 transition-[width] duration-200" :style="{width:sidebarCollapsed?'4.5rem':`${store.settings.sidebar_width ?? 240}px`}">
       <div class="flex h-16 shrink-0 items-center border-b border-border" :class="sidebarCollapsed?'justify-center px-2':narrowSidebar?'px-2':'px-4'" @mousedown="startWindowDrag">
         <div class="flex items-center gap-2"><div class="flex size-8 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">L</div><p v-if="!sidebarCollapsed" class="text-sm font-semibold tracking-tight">Lumo</p></div>
       </div>
       <nav class="flex flex-col gap-1 py-3" :class="sidebarCollapsed?'px-2':narrowSidebar?'px-1':'px-3'" aria-label="主导航">
         <Button v-for="item in nav" :key="item.id" variant="ghost" class="h-11 rounded-xl text-sm" :class="[sidebarCollapsed?'w-full justify-center px-0':narrowSidebar?'w-full justify-start gap-1 px-1':'w-full justify-start gap-3 px-3',page===item.id?'bg-primary/10 font-semibold text-primary':'text-muted-foreground']" :aria-label="sidebarCollapsed?item.label:undefined" :title="sidebarCollapsed?item.label:undefined" @click="navigate(item.id)"><component :is="item.icon" /><span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span></Button>
       </nav>
-      <div class="mt-auto flex shrink-0 flex-wrap items-center justify-center gap-1 border-t border-border p-2">
+      <div class="mt-auto flex shrink-0 flex-wrap items-center justify-center gap-1 p-2">
         <Button variant="ghost" :size="narrowSidebar&&!sidebarCollapsed?'icon-xs':'icon'" :aria-label="sidebarCollapsed?'展开侧边栏':'收起侧边栏'" @click="sidebarCollapsed=!sidebarCollapsed"><PanelLeftOpen v-if="sidebarCollapsed" /><PanelLeftClose v-else /></Button>
         <template v-if="!sidebarCollapsed">
           <Button variant="ghost" :size="narrowSidebar?'icon-xs':'icon'" aria-label="设置" :aria-pressed="page==='settings'" :class="page==='settings'?'bg-primary/10 text-primary':''" @click="navigate('settings')"><Settings /></Button>
@@ -190,17 +201,17 @@ onUnmounted(()=>{extraListeners.forEach(unlisten=>unlisten());systemTheme.remove
     </aside>
 
     <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header class="relative z-20 flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 backdrop-blur" @mousedown="startWindowDrag">
+      <header class="relative z-20 flex h-16 shrink-0 items-center gap-4 bg-background/90 px-6 backdrop-blur" @mousedown="startWindowDrag">
         <div class="min-w-0 flex-1"></div>
         <div class="relative flex w-full max-w-xl items-center" data-no-drag>
           <Search class="pointer-events-none absolute left-3 size-4 text-muted-foreground" /><Input v-model="search" class="h-10 border-border bg-card pl-10 pr-10" placeholder="搜索应用、笔记、便签、倒数日…" aria-label="全局搜索" @focus="searchOpen=!!search.trim()" @keydown="handleSearchKeydown" />
           <div v-if="searchOpen&&search.trim()" class="absolute left-0 right-0 top-12 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-popover shadow-xl">
-            <template v-for="(result,index) in searchResults" :key="`${result.kind}-${result.id}`"><p v-if="index===0||searchResults[index-1].kind!==result.kind" class="px-4 pt-3 pb-1 text-xs font-semibold text-muted-foreground">{{ {resource:'应用库',note:'笔记',sticky:'便签',countdown:'倒数日'}[result.kind] }}</p><Button variant="ghost" class="h-auto w-full items-start justify-start gap-3 rounded-none px-4 py-3 text-left whitespace-normal" :class="activeSearchIndex===index?'bg-accent':''" @mouseenter="activeSearchIndex=index" @click="openResult(result)"><span class="mt-0.5 rounded-lg bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary">{{ result.kind==='note'?'笔记':result.kind==='sticky'?'便签':result.kind==='countdown'?'倒数日':'应用库' }}</span><span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium">{{ result.title }}</span><span class="mt-1 block truncate text-xs text-muted-foreground">{{ result.subtitle }}</span></span><ChevronRight class="mt-1 shrink-0 text-muted-foreground" /></Button></template>
-            <p v-if="!searchResults.length" class="px-4 py-5 text-center text-sm text-muted-foreground">没有找到相关内容</p>
+            <template v-for="(result,index) in searchResults" :key="`${result.kind}-${result.id}`"><p v-if="index===0||searchResults[index-1].kind!==result.kind" class="px-4 pt-3 pb-1 text-xs font-semibold text-muted-foreground">{{ {resource:'应用库',note:'笔记',sticky:'便签',countdown:'倒数日'}[result.kind] }}</p><Button variant="ghost" class="h-auto w-full items-start justify-start gap-3 rounded-none px-4 py-3 text-left whitespace-normal" :class="activeSearchIndex===index?'bg-accent':''" @mouseenter="activeSearchIndex=index" @click="openResult(result)"><span class="mt-0.5 rounded-lg bg-primary/10 px-2 py-1 text-[0.625rem] font-medium text-primary">{{ result.kind==='note'?'笔记':result.kind==='sticky'?'便签':result.kind==='countdown'?'倒数日':'应用库' }}</span><span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium"><SearchHighlight :text="result.title" :query="search"/></span><span class="mt-1 block truncate text-xs text-muted-foreground"><SearchHighlight :text="result.subtitle" :query="search"/></span></span><ChevronRight class="mt-1 shrink-0 text-muted-foreground" /></Button></template>
+            <div v-if="!searchResults.length" class="flex flex-col items-center gap-3 px-4 py-5"><p class="text-sm text-muted-foreground">没有找到相关内容</p><div class="flex gap-2"><Button size="sm" variant="outline" @click="showCapture(search);searchOpen=false">用此关键词创建记录</Button><Button size="sm" variant="outline" @click="addFromSearch()">添加启动项</Button></div></div>
             <div class="border-t border-border px-4 py-2 text-[0.6875rem] text-muted-foreground">本地搜索 · 搜索结果仅保存在此设备</div>
           </div>
         </div>
-        <div class="flex min-w-0 flex-1 justify-end"><WindowControls /></div>
+        <div class="flex min-w-0 flex-1 justify-end"><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><WindowControls /></div>
       </header>
       <main :key="page" class="min-h-0 flex-1 px-4 pt-4" :class="['notes','stickies','library','countdowns','settings'].includes(page)?'flex flex-col overflow-hidden pb-4':'overflow-y-auto overscroll-contain'">
         <component :is="currentView" @navigate="navigate" />

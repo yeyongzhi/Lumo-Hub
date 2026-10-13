@@ -1,3 +1,4 @@
+mod library_tools;
 mod local_files;
 mod note_files;
 mod desktop;
@@ -136,11 +137,13 @@ pub fn run() {
             commands::update_sticky,
             commands::delete_sticky,
             commands::list_countdowns,
+            reminders::test_notification,
             commands::create_countdown,
             commands::update_countdown,
             commands::delete_countdown,
             commands::list_resources,
             commands::create_resource,
+            library_tools::find_duplicate, library_tools::preview_targets, library_tools::save_launch_options, library_tools::read_icon, library_tools::reorder_groups,
             commands::update_resource,
             commands::delete_resource,
             commands::toggle_favorite,

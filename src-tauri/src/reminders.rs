@@ -2,11 +2,23 @@ use crate::AppState;
 use chrono::{Datelike,NaiveDate,Local,Duration};
 use tauri::{Manager,Emitter};
 use tauri_plugin_notification::NotificationExt;
+#[tauri::command]
+pub fn test_notification(app:tauri::AppHandle)->Result<(),String>{
+    app.notification().builder().title("Lumo · 通知测试").body("系统通知可正常显示；倒数日提醒会按设置时间发送。").show().map_err(|e|format!("系统通知不可用：{e}；请在 Windows 设置中允许 Lumo-Hub 通知。"))
+}
+fn annual_date(date:NaiveDate,year:i32)->NaiveDate{
+    NaiveDate::from_ymd_opt(year,date.month(),date.day()).unwrap_or_else(||NaiveDate::from_ymd_opt(year,2,28).unwrap())
+}
+pub fn next_occurrence(date:NaiveDate,today:NaiveDate)->NaiveDate{
+    let this=annual_date(date,today.year());
+    if this<today{annual_date(date,today.year()+1)}else{this}
+}
 pub fn target_date(date:NaiveDate,yearly:bool,today:NaiveDate)->NaiveDate{
     if !yearly{return date}
-    let make=|year|NaiveDate::from_ymd_opt(year,date.month(),date.day()).unwrap_or_else(||NaiveDate::from_ymd_opt(year,2,28).unwrap());
-    let this=make(today.year());
-    if this<today-Duration::days(1){make(today.year()+1)}else{this}
+    let this=annual_date(date,today.year());
+    // The page shows the next occurrence. Only notifications may catch up yesterday's
+    // delivery, and their message explicitly says "补发提醒 · 昨天到期".
+    if this==today-Duration::days(1){this}else{next_occurrence(date,today)}
 }
 pub fn due_offset(target:NaiveDate,offsets:&[i64],today:NaiveDate,hour:u32,reminder_hour:u8)->Option<i64>{
     if today>target+Duration::days(1){return None}
@@ -47,4 +59,10 @@ mod tests{
     fn day(value:&str)->NaiveDate{NaiveDate::parse_from_str(value,"%Y-%m-%d").unwrap()}
     #[test]fn catchup_chooses_one_latest_milestone(){let target=day("2026-10-10");assert_eq!(due_offset(target,&[0,1,7],target,10,9),Some(0));assert_eq!(due_offset(target,&[0,1,7],target,8,9),Some(1));assert_eq!(due_offset(target,&[0,1,7],day("2026-10-12"),10,9),None);}
     #[test]fn yearly_and_leap_day(){assert_eq!(target_date(day("2024-02-29"),true,day("2026-02-01")),day("2026-02-28"));assert_eq!(target_date(day("2024-10-10"),true,day("2026-10-12")),day("2027-10-10"));}
+    #[test]fn next_date_and_catchup_are_distinct(){
+        assert_eq!(next_occurrence(day("2024-02-29"),day("2027-03-01")),day("2028-02-29"));
+        assert_eq!(next_occurrence(day("2000-10-13"),day("2026-10-14")),day("2027-10-13"));
+        assert_eq!(target_date(day("2000-10-13"),true,day("2026-10-14")),day("2026-10-13"));
+        assert_eq!(next_occurrence(day("2000-01-03"),day("2026-12-31")),day("2027-01-03"));
+    }
 }
