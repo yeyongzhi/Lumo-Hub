@@ -7,10 +7,11 @@ import { readLocal, writeLocal } from '@/lib/local-files'
 import { api } from '@/lib/api'
 import { parseFeed, type FeedData, type FeedKind } from '@/lib/home-feeds'
 const props = defineProps<{ kind: FeedKind; refreshKey: number }>()
-const emit = defineEmits<{ metadata: [value: string]; updated: [value: string] }>()
+const emit = defineEmits<{ metadata: [value: string]; updated: [value: string]; loading: [value: boolean] }>()
 const data = ref<FeedData | null>(null)
 watch(data, value => emit('metadata', value?.date || ''))
 const loading = ref(false), error = ref(''), city = ref(''), cityDraft = ref(city.value), changingCity = ref(false)
+watch(loading, value => emit('loading', value), { immediate: true })
 const offline=ref(!navigator.onLine)
 const currentDay=ref(new Date())
 let dayTimer:ReturnType<typeof setInterval>|undefined

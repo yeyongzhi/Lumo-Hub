@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LibraryManagement from '@/components/LibraryManagement.vue'
+import GroupManagement from '@/components/GroupManagement.vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { resourceImage, launchOptions, targetKey, stableResourceOrder } from '@/lib/library-preferences'
 import { writeLocal } from '@/lib/local-files'
@@ -7,11 +8,10 @@ import { askConfirmation } from '@/lib/confirm'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { computed, onUnmounted, onMounted, nextTick, reactive, ref, watch } from 'vue'
-import { GripVertical, List, Monitor, Terminal, SquareTerminal, NotebookPen, Calculator, Settings, Ellipsis, LayoutGrid, AppWindow, ArrowUpRight, FileText, Folder, FolderPlus, Globe, Heart, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from '@lucide/vue'
+import { GripVertical, List, Monitor, Terminal, SquareTerminal, NotebookPen, Calculator, Settings, Ellipsis, LayoutGrid, AppWindow, ArrowUpRight, ChevronDown, FileText, Folder, FolderCog, Globe, Heart, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from '@lucide/vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -26,6 +26,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuGroup, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from '@/components/ui/context-menu'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { api } from '@/lib/api'
 import { useWorkspaceStore } from '@/stores/workspace'
@@ -53,8 +54,7 @@ async function setAllCommon(enabled:boolean){if(commonSaving.value)return;common
 async function launchCommon(id:string){if(commonOpening.has(id))return;commonOpening.add(id);try{await api.launchCommon(id)}catch(e){store.notify(String(e))}finally{commonOpening.delete(id)}}
 const activeFilter=ref('all')
 const displayMode=ref<'grid'|'list'>(store.settings.client?.['lumo-library-display']==='list'?'list':'grid')
-function setDisplayMode(value:unknown){if(value==='grid'||value==='list')displayMode.value=value}
-watch(displayMode,value=>void writeLocal('lumo-library-display',value).catch(e=>store.notify(String(e))))
+watch(displayMode,value=>void store.saveClient('lumo-library-display',value).catch(e=>store.notify(String(e))))
 const launcherLayout=computed(()=>displayMode.value==='grid'?(density.value==='compact'?'grid min-w-0 grid-cols-[repeat(auto-fill,minmax(6rem,1fr))] gap-2':density.value==='comfortable'?'grid min-w-0 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-4':'grid min-w-0 grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-4'):'flex min-w-0 flex-col gap-2')
 const launcherTile=computed(()=>displayMode.value==='grid'?'h-28 w-full min-w-0 flex-col items-center justify-center gap-3 rounded-2xl px-3 py-3 has-[>svg]:px-3':'min-h-16 h-auto w-full min-w-0 justify-start gap-3 rounded-xl px-4 py-3')
 const launcherIcon=computed(()=>displayMode.value==='grid'?'size-10 shrink-0 object-contain':'size-8 shrink-0 object-contain')
@@ -94,8 +94,7 @@ onUnmounted(()=>{stopDrop?.();window.removeEventListener('pointermove',resourceP
 async function refreshHealth(){try{resourceHealth.value=await api.resourceHealth()}catch(e){store.notify(String(e))}}
 const showForm=ref(false)
 const editingId=ref('')
-const groupName=ref('')
-const groupDialogOpen=ref(false), groupEditingId=ref(''), groupSaving=ref(false)
+const groupManagerOpen=ref(false)
 const showScan=ref(false)
 const candidates=ref<ScanCandidate[]>([])
 const scanCategory=ref('all')
@@ -122,7 +121,44 @@ let duplicateTimer:ReturnType<typeof setTimeout>|undefined,duplicateVersion=0
 watch([()=>form.kind,()=>form.target,editingId],()=>{remoteDuplicate.value=null;const version=++duplicateVersion;if(duplicateTimer)clearTimeout(duplicateTimer);if(!form.target.trim())return;duplicateTimer=setTimeout(async()=>{try{const id=await api.findDuplicate(form.kind,form.target,editingId.value||null);if(version===duplicateVersion)remoteDuplicate.value=id}catch{}},250)})
 onUnmounted(()=>{if(duplicateTimer)clearTimeout(duplicateTimer);++duplicateVersion})
 const filters=[{id:'all',label:'全部',icon:LayoutGrid},{id:'app',label:'应用',icon:AppWindow},{id:'web',label:'网页',icon:Globe},{id:'file',label:'文件',icon:FileText}] as const
-watch(()=>store.searchTarget,async target=>{if(target?.kind==='resource'){focusedId.value=target.id;activeFilter.value='all';await nextTick();document.getElementById(`resource-${target.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});store.searchTarget=null}},{immediate:true})
+const filterArea=ref<HTMLElement|null>(null)
+const visibleGroupIds=ref<string[]>(store.groups.map(group=>group.id)), overflowGroups=computed(()=>store.groups.filter(group=>!visibleGroupIds.value.includes(group.id)))
+const overflowOpen=ref(false)
+let filterResizeObserver:ResizeObserver|undefined, overflowCloseTimer:ReturnType<typeof setTimeout>|undefined
+async function updateVisibleGroups(){
+  await nextTick()
+  const area=filterArea.value
+  const list=area?.querySelector<HTMLElement>('[data-slot="tabs-list"]')
+  const manager=area?.querySelector<HTMLElement>('[data-group-manager]')
+  if(!area||!list||!manager)return
+  const fixed=[...list.querySelectorAll<HTMLElement>('[data-fixed-filter]')]
+  const fixedWidth=fixed.reduce((sum,item)=>sum+item.offsetWidth,0)
+  const measuredGroups=[...area.querySelectorAll<HTMLElement>('[data-measure-group]')]
+  const groupWidthById=new Map(measuredGroups.map(item=>[item.dataset.measureGroup??'',item.offsetWidth]))
+  const groupWidths=store.groups.map(group=>groupWidthById.get(group.id)??56)
+  const listGap=4,outerGap=8,moreWidth=32
+  const widthForList=(hasMore:boolean)=>Math.max(0,area.clientWidth-manager.offsetWidth-outerGap*(1+(hasMore?1:0)))
+  const totalWidth=fixedWidth+Math.max(0,fixed.length-1)*listGap+groupWidths.reduce((sum,width)=>sum+listGap+width,0)
+  const hasMore=store.groups.length>0&&totalWidth>widthForList(false)
+  const capacity=widthForList(hasMore)- (hasMore?moreWidth:0)
+  let used=fixedWidth+Math.max(0,fixed.length-1)*listGap
+  const visible:string[]=[]
+  for(let index=0;index<store.groups.length;index++){
+    const width=groupWidths[index]??56
+    if(used+listGap+width>capacity)break
+    visible.push(store.groups[index]!.id)
+    used+=listGap+width
+  }
+  const next=visible.length===store.groups.length?store.groups.map(group=>group.id):visible
+  if(next.length!==visibleGroupIds.value.length||next.some((id,index)=>id!==visibleGroupIds.value[index]))visibleGroupIds.value=next
+}
+function openOverflow(){if(overflowCloseTimer)clearTimeout(overflowCloseTimer);overflowOpen.value=true}
+function scheduleCloseOverflow(){if(overflowCloseTimer)clearTimeout(overflowCloseTimer);overflowCloseTimer=setTimeout(()=>overflowOpen.value=false,160)}
+function chooseOverflowGroup(id:string){activeFilter.value=`group:${id}`;overflowOpen.value=false}
+watch(()=>store.groups.map(group=>`${group.id}:${group.name}`).join('|'),()=>void updateVisibleGroups())
+onMounted(()=>{void updateVisibleGroups();if(filterArea.value){filterResizeObserver=new ResizeObserver(()=>void updateVisibleGroups());filterResizeObserver.observe(filterArea.value)}})
+onUnmounted(()=>{filterResizeObserver?.disconnect();if(overflowCloseTimer)clearTimeout(overflowCloseTimer)})
+watch(()=>store.searchTarget,async target=>{if(target?.kind==='resource'){focusedId.value='';activeFilter.value='all';await nextTick();document.getElementById(`resource-${target.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});store.searchTarget=null}},{immediate:true})
 const matchingIds=ref<string[]>([])
 let searchVersion=0
 watch([query,()=>store.resources],async ([value])=>{const version=++searchVersion;matchingIds.value=[];try{const results=await api.searchResources(value);if(version===searchVersion)matchingIds.value=results.map(item=>item.id)}catch(e){store.notify(String(e))}})
@@ -133,7 +169,7 @@ const shownResources=computed(()=>{
   return sortMode.value==='custom'?stableResourceOrder(sorted,customOrder.value):stableResourceOrder(sorted,sessionOrder.value)
 })
 watch([sortMode,activeFilter,query],()=>{sessionOrder.value=[]})
-watch(shownResources,items=>{if(!query.value.trim()&&!sessionOrder.value.length)sessionOrder.value=items.map(i=>i.id)},{immediate:true})
+watch(shownResources,items=>{if(!query.value.trim()&&!sessionOrder.value.length&&items.length)sessionOrder.value=items.map(i=>i.id)},{immediate:true})
 const batchMode=ref(false), selectedIds=ref<string[]>([]), batchBusy=ref(false), deleteBatch=ref(false)
 watch([activeFilter,query],()=>{selectedIds.value=[]})
 function toggleSelection(id:string){selectedIds.value=selectedIds.value.includes(id)?selectedIds.value.filter(x=>x!==id):[...selectedIds.value,id]}
@@ -171,20 +207,14 @@ async function remove(item:Resource){if(!await askConfirmation(`从应用库移�
 async function launch(item:Resource){if(openingIds.has(item.id))return;if(resourceHealth.value[item.id]===false){await relocate(item);return;}openingIds.add(item.id);try{await store.launchResource(item.id)}catch(e){store.notify(String(e));if(item.kind!=='web'&&await askConfirmation('该路径可能已失效。现在重新定位吗？'))await relocate(item)}finally{openingIds.delete(item.id)}}
 async function relocate(item:Resource){const result=await open({multiple:false,directory:false,filters:item.kind==='app'?[{name:'应用程序或快捷方式',extensions:['exe','lnk']}]:undefined});if(typeof result!=='string')return;try{await api.relocateResource(item.id,result);await store.reload();store.notify('路径已更新')}catch(e){store.notify(String(e))}}
 async function favorite(item:Resource){try{await api.toggleFavorite(item.id);await store.reload()}catch(e){store.notify(String(e))}}
-function promptNewGroup(){groupEditingId.value='';groupName.value='';groupDialogOpen.value=true}
-function renameGroup(id:string,name:string){groupEditingId.value=id;groupName.value=name;groupDialogOpen.value=true}
-async function saveGroup(){if(!groupName.value.trim()||groupSaving.value)return;groupSaving.value=true;try{if(groupEditingId.value)await api.renameGroup(groupEditingId.value,groupName.value.trim());else await api.createGroup(groupName.value.trim());await store.reload();groupDialogOpen.value=false;store.notify(groupEditingId.value?'分组名称已更新':'分组已创建')}catch(e){store.notify(String(e))}finally{groupSaving.value=false}}
-async function removeGroup(id:string,name:string){if(!await askConfirmation(`删除分组“${name}”？其中的启动项会移至未分组。`))return;try{await api.deleteGroup(id);if(activeFilter.value===`group:${id}`)activeFilter.value='all';await store.reload();store.notify('分组已删除')}catch(e){store.notify(String(e))}}
 async function scan(){scanBusy.value=true;showScan.value=true;try{candidates.value=await api.scanApplications();selectedTargets.value=[];scanCategory.value='application';scanQuery.value='';showImported.value=false}catch(e){store.notify(`扫描失败：${String(e)}`)}finally{scanBusy.value=false}}
 async function importSelected(){if(importing.value)return;const selected=candidates.value.filter(c=>selectedTargets.value.includes(c.target));if(!selected.length)return;importing.value=true;try{const before=store.resources.length;await api.importCandidates(selected);await store.reload();const count=store.resources.length-before;showScan.value=false;store.notify(`新增 ${count} 项，已存在 ${selected.length-count} 项`)}catch(e){store.notify(`导入失败：${String(e)}`)}finally{importing.value=false}}
 function iconFor(kind:ResourceKind){return kind==='app'?AppWindow:kind==='web'?Globe:FileText}
-function scrollFilters(event:WheelEvent){const element=event.currentTarget as HTMLElement;if(event.shiftKey||Math.abs(event.deltaX)>Math.abs(event.deltaY)||element.scrollWidth<=element.clientWidth)return;const before=element.scrollLeft;element.scrollLeft+=event.deltaY;if(element.scrollLeft!==before)event.preventDefault()}
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden" @dragover.prevent @drop.prevent="dropText"><LibraryManagement v-model:open="organizerOpen" :health="resourceHealth" @relocate="relocate" @refresh="refreshHealth"/><p v-if="dropHint" role="status" class="rounded-lg bg-primary/10 p-3 text-sm text-primary">松开以预览并添加文件或应用</p><Dialog v-model:open="showDrop"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>添加拖入的启动项</DialogTitle><DialogDescription>勾选需要添加的项目；已存在的目标默认跳过。</DialogDescription></DialogHeader><div class="min-h-0 overflow-y-auto"><label v-for="item in dropPreview" :key="item.target" class="flex items-center gap-3 py-2"><Checkbox v-model="item.selected" :disabled="dropBusy"/><img v-if="item.icon_data" :src="item.icon_data" class="size-8 object-contain" alt=""/><span class="min-w-0 flex-1"><span class="block truncate">{{ item.name }}</span><span class="block truncate text-xs text-muted-foreground">{{ item.target }}</span></span></label></div><DialogFooter><Button variant="outline" :disabled="dropBusy" @click="showDrop=false">取消</Button><Button :disabled="dropBusy||!dropPreview.some(i=>i.selected)" @click="importDrop">{{ dropBusy?'正在添加…':'添加所选' }}</Button></DialogFooter></DialogContent></Dialog>
+  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden" @dragover.prevent @drop.prevent="dropText"><LibraryManagement v-model:open="organizerOpen" :health="resourceHealth" @relocate="relocate" @refresh="refreshHealth"/><GroupManagement v-model:open="groupManagerOpen"/><p v-if="dropHint" role="status" class="rounded-lg bg-primary/10 p-3 text-sm text-primary">松开以预览并添加文件或应用</p><Dialog v-model:open="showDrop"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>添加拖入的启动项</DialogTitle><DialogDescription>勾选需要添加的项目；已存在的目标默认跳过。</DialogDescription></DialogHeader><div class="min-h-0 overflow-y-auto"><label v-for="item in dropPreview" :key="item.target" class="flex items-center gap-3 py-2"><Checkbox v-model="item.selected" :disabled="dropBusy"/><img v-if="item.icon_data" :src="item.icon_data" class="size-8 object-contain" alt=""/><span class="min-w-0 flex-1"><span class="block truncate">{{ item.name }}</span><span class="block truncate text-xs text-muted-foreground">{{ item.target }}</span></span></label></div><DialogFooter><Button variant="outline" :disabled="dropBusy" @click="showDrop=false">取消</Button><Button :disabled="dropBusy||!dropPreview.some(i=>i.selected)" @click="importDrop">{{ dropBusy?'正在添加…':'添加所选' }}</Button></DialogFooter></DialogContent></Dialog>
     <Dialog v-model:open="commonDialogOpen"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>配置常用启动项</DialogTitle><DialogDescription>开启的项目显示在「全部」和「常用启动项」中，修改后自动保存。</DialogDescription></DialogHeader><FieldGroup class="min-h-0 gap-3 overflow-y-auto p-1"><Field orientation="horizontal"><FieldLabel for="common-all">全部开启 / 全部关闭</FieldLabel><Switch id="common-all" :model-value="allCommonEnabled" :disabled="commonSaving" @update:model-value="setAllCommon" /></Field><Field v-for="item in commonLaunchers" :key="item.id" orientation="horizontal"><FieldLabel :for="`common-${item.id}`"><img v-if="commonIcons[item.id]" :src="commonIcons[item.id]" alt="" class="size-5 shrink-0 object-contain" /><component :is="item.icon" v-else class="size-5 shrink-0" />{{ item.name }}</FieldLabel><Switch :id="`common-${item.id}`" :model-value="enabledCommon.some(x=>x.id===item.id)" :disabled="commonSaving" @update:model-value="value=>setCommon(item.id,value)" /></Field></FieldGroup></DialogContent></Dialog>
-    <Dialog v-model:open="groupDialogOpen"><DialogContent><DialogHeader><DialogTitle>{{ groupEditingId?'重命名分组':'新建分组' }}</DialogTitle><DialogDescription>输入分组名称，整理应用库中的启动项。</DialogDescription></DialogHeader><form class="flex flex-col gap-5" @submit.prevent="saveGroup"><FieldGroup><Field><FieldLabel for="group-name">分组名称</FieldLabel><Input id="group-name" v-model="groupName" placeholder="输入分组名称" autofocus :maxlength="80" /></Field></FieldGroup><DialogFooter><Button type="button" variant="outline" @click="groupDialogOpen=false">取消</Button><Button type="submit" :disabled="!groupName.trim()||groupSaving">{{ groupSaving?'正在保存…':'保存' }}</Button></DialogFooter></form></DialogContent></Dialog>
     <Dialog :open="showForm" @update:open="value=>{if(!value&&!formSaving)clearForm()}"><DialogContent class="flex max-h-[85dvh] flex-col sm:max-w-xl">
       <DialogHeader><DialogTitle>{{ editingId?'编辑启动项':'添加启动项' }}</DialogTitle><DialogDescription>填写启动项信息，将应用、网页或文件添加到应用库。</DialogDescription></DialogHeader>
       <form class="flex min-h-0 flex-col gap-5" @submit.prevent="save">
@@ -223,28 +253,26 @@ function scrollFilters(event:WheelEvent){const element=event.currentTarget as HT
       <DialogFooter class="shrink-0"><Button variant="outline" :disabled="scanBusy||!filteredCandidates.length" @click="toggleAllScan">{{ allScanSelected?'取消全选':'全选' }}</Button><Button variant="outline" @click="showScan=false">取消</Button><Button :disabled="scanBusy||importing||!selectedTargets.length" @click="importSelected">{{ importing?'导入中…':'导入所选' }}（{{ selectedTargets.length }}）</Button></DialogFooter>
     </DialogContent></Dialog>
     <Tabs v-model="activeFilter" class="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
-      <div class="flex min-w-0 shrink-0 flex-wrap items-center gap-3">
-        <div class="flex min-w-0 flex-1 basis-80 items-center gap-2 overflow-x-auto py-1" aria-label="应用库筛选和分组" @wheel="scrollFilters">
-          <TabsList class="shrink-0" aria-label="应用库筛选">
-            <TabsTrigger v-for="item in filters" :key="item.id" :value="item.id"><component :is="item.icon" />{{ item.label }}</TabsTrigger>
-            <TabsTrigger value="favorites"><Star />收藏</TabsTrigger>
-            <TabsTrigger value="common"><Monitor />常用启动项</TabsTrigger>
-            <TabsTrigger :data-resource-group="group.id" :class="groupDrop===group.id?'ring-2 ring-primary':''" v-for="group in store.groups" :key="group.id" :value="`group:${group.id}`"><Folder />{{ group.name }}</TabsTrigger>
+      <div class="flex min-w-0 shrink-0 flex-nowrap items-center gap-3">
+        <div ref="filterArea" class="relative flex min-w-0 flex-1 basis-80 flex-nowrap items-center gap-2 py-1" aria-label="应用库筛选和分组">
+          <TabsList class="h-9 min-w-0 max-w-full flex-1 flex-nowrap justify-start gap-1 overflow-hidden" aria-label="应用库筛选">
+            <TabsTrigger v-for="item in filters" :key="item.id" :data-fixed-filter="item.id" class="flex-none" :value="item.id"><component :is="item.icon" />{{ item.label }}</TabsTrigger>
+            <TabsTrigger value="favorites" data-fixed-filter="favorites" class="flex-none"><Star />收藏</TabsTrigger>
+            <TabsTrigger value="common" data-fixed-filter="common" class="flex-none"><Monitor />常用启动项</TabsTrigger>
+            <TabsTrigger :data-resource-group="group.id" :class="[groupDrop===group.id?'ring-2 ring-primary':'','flex-none']" v-for="group in store.groups.filter(item=>visibleGroupIds.includes(item.id))" :key="group.id" :value="`group:${group.id}`"><Folder />{{ group.name }}</TabsTrigger>
           </TabsList>
-          <template v-if="activeGroup">
-            <Button variant="ghost" size="icon-xs" :aria-label="`重命名分组 ${activeGroup.name}`" @click="renameGroup(activeGroup.id,activeGroup.name)"><Pencil /></Button>
-            <Button variant="danger" size="icon-xs" :aria-label="`删除分组 ${activeGroup.name}`" @click="removeGroup(activeGroup.id,activeGroup.name)"><Trash2 /></Button>
-          </template>
-          <Button variant="ghost" size="sm" class="shrink-0" @click="promptNewGroup"><FolderPlus data-icon="inline-start" />新建分组</Button>
+          <Popover v-if="overflowGroups.length" v-model:open="overflowOpen"><PopoverTrigger as-child><Button variant="outline" size="icon-sm" class="shrink-0" aria-label="更多分组" title="更多分组" @mouseenter="openOverflow" @mouseleave="scheduleCloseOverflow" @focus="openOverflow"><Ellipsis /></Button></PopoverTrigger><PopoverContent align="start" class="w-56 p-2" @mouseenter="openOverflow" @mouseleave="scheduleCloseOverflow"><div class="flex max-h-72 flex-col gap-1 overflow-y-auto"><Button v-for="group in overflowGroups" :key="group.id" variant="ghost" class="w-full justify-start gap-2" :class="activeFilter===`group:${group.id}`?'bg-primary/10 text-primary':''" :data-resource-group="group.id" @click="chooseOverflowGroup(group.id)"><Folder class="size-4" />{{ group.name }}</Button></div></PopoverContent></Popover>
+          <Button data-group-manager variant="outline" size="sm" class="shrink-0" @click="groupManagerOpen=true"><FolderCog data-icon="inline-start" />管理分组<ChevronDown data-icon="inline-end" /></Button>
+
+          <div aria-hidden="true" class="pointer-events-none invisible absolute left-0 top-0 flex gap-1"><span v-for="group in store.groups" :key="group.id" :data-measure-group="group.id" class="inline-flex h-8 flex-none items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap"><Folder class="size-4" />{{ group.name }}</span></div>
         </div>
-        <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2" aria-label="应用库操作">
+        <div class="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-2" aria-label="应用库操作">
           <Select v-model="sortMode"><SelectTrigger class="h-8 w-28" aria-label="应用排序"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="frequent">常用优先</SelectItem><SelectItem value="recent">最近使用</SelectItem><SelectItem value="name">名称排序</SelectItem><SelectItem value="custom">自定义排序</SelectItem></SelectGroup></SelectContent></Select>
-        <TooltipProvider :delay-duration="200"><ToggleGroup type="single" :model-value="displayMode" variant="outline" size="sm" aria-label="显示方式" @update:model-value="setDisplayMode"><Tooltip><TooltipTrigger as-child><ToggleGroupItem value="grid" aria-label="网格展示"><LayoutGrid /></ToggleGroupItem></TooltipTrigger><TooltipContent>网格展示</TooltipContent></Tooltip><Tooltip><TooltipTrigger as-child><ToggleGroupItem value="list" aria-label="列表展示"><List /></ToggleGroupItem></TooltipTrigger><TooltipContent>列表展示</TooltipContent></Tooltip></ToggleGroup></TooltipProvider>
-          <Select v-model="density"><SelectTrigger class="h-8 w-24" aria-label="网格密度"><SelectValue/></SelectTrigger><SelectContent><SelectGroup><SelectItem value="compact">紧凑</SelectItem><SelectItem value="standard">标准</SelectItem><SelectItem value="comfortable">宽松</SelectItem></SelectGroup></SelectContent></Select><DropdownMenu v-if="displayMode==='list'"><DropdownMenuTrigger as-child><Button variant="outline" size="sm">显示信息</Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuGroup><DropdownMenuCheckboxItem v-for="column in listColumnOptions" :key="column.id" :model-value="listColumns.includes(column.id)" @select="$event.preventDefault()" @update:model-value="value=>toggleColumn(column.id,value===true)">{{ column.name }}</DropdownMenuCheckboxItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu><div class="relative w-48 shrink-0"><Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input v-model="query" class="h-8 pl-9" placeholder="名称、拼音或别名" aria-label="筛选启动项" /></div>
+          <DropdownMenu v-if="displayMode==='list'"><DropdownMenuTrigger as-child><Button variant="outline" size="sm">显示信息</Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuGroup><DropdownMenuCheckboxItem v-for="column in listColumnOptions" :key="column.id" :model-value="listColumns.includes(column.id)" @select="$event.preventDefault()" @update:model-value="value=>toggleColumn(column.id,value===true)">{{ column.name }}</DropdownMenuCheckboxItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu><div class="relative w-48 shrink-0"><Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input v-model="query" class="h-8 pl-9" placeholder="名称、拼音或别名" aria-label="筛选启动项" /></div>
           <div class="flex shrink-0 items-center gap-px"><Button size="sm" class="rounded-r-none" @click="addResource"><Plus data-icon="inline-start" />添加</Button><DropdownMenu><DropdownMenuTrigger as-child><Button size="icon-sm" class="rounded-l-none" aria-label="更多应用库操作" title="更多操作"><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem @select="organizerOpen=true"><Folder/>整理分组 / 失效检查 / 工作组合</DropdownMenuItem><DropdownMenuItem @select="batchMode=!batchMode;selectedIds=[]"><Pencil />{{ batchMode?'完成管理':'管理应用' }}</DropdownMenuItem><DropdownMenuItem :disabled="scanBusy" @select="scan"><RefreshCw />扫描本机应用</DropdownMenuItem><DropdownMenuItem @select="commonDialogOpen=true"><Settings />配置常用启动项</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu></div>
         </div>
       </div>
-      <TabsContent :value="activeFilter" class="min-h-0 flex-1 overflow-hidden"><ScrollArea class="h-full w-full" aria-label="应用库启动项"><div class="flex min-w-0 flex-col gap-4 pr-3 pb-3">
+      <TabsContent :value="activeFilter" class="min-h-0 flex-1 overflow-hidden"><ScrollArea class="h-full w-full" aria-label="应用库启动项"><div class="flex min-h-full min-w-0 flex-col gap-4 pr-3 pb-3">
         <h2 v-if="shownCommon.length&&activeFilter==='all'" class="text-xs font-medium text-muted-foreground">系统启动项 · {{ shownCommon.length }}</h2><div v-if="shownCommon.length" :class="launcherLayout" aria-label="常用启动项"><Button v-for="(item,index) in shownCommon" :key="item.id" variant="ghost" :class="launcherTile" :title="item.name" :aria-busy="commonOpening.has(item.id)" :disabled="commonOpening.has(item.id)" @click="launchCommon(item.id)"><span v-if="displayMode==='list'" class="w-7 shrink-0 text-center text-sm tabular-nums text-muted-foreground">{{ index+1 }}</span><img v-if="commonIcons[item.id]" :src="commonIcons[item.id]" alt="" :class="launcherIcon" /><component :is="item.icon" v-else :class="[launcherIcon,'text-muted-foreground']" /><span class="min-w-0 truncate text-sm" :class="displayMode==='grid'?'w-full text-center':'flex-1 text-left'">{{ commonOpening.has(item.id)?'正在打开…':item.name }}</span><span v-if="displayMode==='list'&&listColumns.includes('developer')" class="w-32 shrink-0 truncate text-right text-sm text-muted-foreground">Microsoft</span></Button></div>
         <div v-if="batchMode&&activeFilter!=='common'" class="flex flex-wrap items-center gap-3 rounded-xl bg-muted p-3">
           <Checkbox :model-value="shownResources.length>0&&shownResources.every(item=>selectedIds.includes(item.id))" aria-label="选择当前结果" @update:model-value="value=>selectedIds=value===true?shownResources.map(item=>item.id):[]"/><span class="text-sm">已选 {{ selectedIds.length }} 项</span>
@@ -262,7 +290,7 @@ function scrollFilters(event:WheelEvent){const element=event.currentTarget as HT
             <ContextMenuItem @select="edit(item)">编辑名称、别名和路径</ContextMenuItem><ContextMenuItem @select="batchMode=true;toggleSelection(item.id)">选择 / 取消选择</ContextMenuItem>
           </ContextMenuGroup><ContextMenuSeparator/><ContextMenuGroup><ContextMenuItem variant="destructive" @select="remove(item)">从应用库移除</ContextMenuItem></ContextMenuGroup></ContextMenuContent></ContextMenu>
         </div>
-        <Card v-else-if="!shownCommon.length" class="flex min-h-64 flex-col items-center justify-center p-8 text-center"><AppWindow class="mb-4 text-primary" /><h2 class="font-semibold">{{ activeFilter==='common'?'没有启用的常用启动项':store.resources.length?'没有匹配的启动项':'还没有启动项' }}</h2><p class="mt-2 max-w-sm text-sm text-muted-foreground">{{ activeFilter==='common'?'在配置中开启常用启动项，或调整搜索关键词。':store.resources.length?'试试切换筛选条件，或调整搜索关键词。':'手动添加应用、网页或文件，也可以扫描常见已安装应用并选择导入。' }}</p><Button v-if="activeFilter==='common'" class="mt-5" variant="outline" @click="commonDialogOpen=true"><Settings data-icon="inline-start" />配置常用启动项</Button><div v-else class="mt-5 flex gap-2"><Button variant="outline" @click="addResource"><Plus data-icon="inline-start"/>添加启动项</Button><Button variant="outline" :disabled="scanBusy" @click="scan">扫描本机</Button></div></Card>
+        <Card v-else-if="!shownCommon.length" class="flex min-h-64 flex-1 flex-col items-center justify-center p-8 text-center"><AppWindow class="mb-4 text-primary" /><h2 class="font-semibold">{{ activeFilter==='common'?'没有启用的常用启动项':store.resources.length?'没有匹配的启动项':'还没有启动项' }}</h2><p class="mt-2 max-w-sm text-sm text-muted-foreground">{{ activeFilter==='common'?'在配置中开启常用启动项，或调整搜索关键词。':store.resources.length?'试试切换筛选条件，或调整搜索关键词。':'手动添加应用、网页或文件，也可以扫描常见已安装应用并选择导入。' }}</p><Button v-if="activeFilter==='common'" class="mt-5" variant="outline" @click="commonDialogOpen=true"><Settings data-icon="inline-start" />配置常用启动项</Button><div v-else class="mt-5 flex gap-2"><Button variant="outline" @click="addResource"><Plus data-icon="inline-start"/>添加启动项</Button><Button variant="outline" :disabled="scanBusy" @click="scan">扫描本机</Button></div></Card>
         </div></ScrollArea>
       </TabsContent>
     </Tabs>

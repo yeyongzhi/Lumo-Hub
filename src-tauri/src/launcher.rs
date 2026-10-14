@@ -27,6 +27,7 @@ pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
         .inner_size(680.0, 480.0)
         .resizable(false)
         .decorations(false)
+        .devtools(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .visible(false)
