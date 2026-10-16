@@ -1,6 +1,6 @@
 # Lumo-Hub
 
-Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台，使用 Tauri 2、Rust、Vue 3、TypeScript、Tailwind CSS 和 shadcn-vue。当前准备发布版本为 **0.1.2-beta.0**（Beta 0）。
+Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台，使用 Tauri 2、Rust、Vue 3、TypeScript、Tailwind CSS 和 shadcn-vue。当前准备发布版本为 **0.0.1-beta.0**（Beta 0）。
 
 ## 功能
 
@@ -39,7 +39,7 @@ pnpm run docs:build
 
 ## Beta 发布
 
-版本遵循 SemVer 预发布编号：首个 Beta 使用 `0.1.2-beta.0`，后续 Beta 依次递增为 `0.1.2-beta.1`、`0.1.2-beta.2`，稳定发布时使用 `0.1.2`。前端、Tauri 和 Rust crate 的版本号需要保持一致。
+版本遵循 SemVer 预发布编号：首个 Beta 使用 `0.0.1-beta.0`，后续 Beta 依次递增为 `0.0.1-beta.1`、`0.0.1-beta.2`，稳定发布时使用 `0.0.1`。前端、Tauri 和 Rust crate 的版本号需要保持一致。
 
 发布前需要：
 
