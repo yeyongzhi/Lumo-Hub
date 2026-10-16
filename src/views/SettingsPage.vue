@@ -5,18 +5,19 @@ import EnhancementSettings from '@/components/EnhancementSettings.vue'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui/field'
 import { computed, ref } from 'vue'
-import { CircleHelp, Check, Database, Download, FolderCog, Settings, Sun, Moon, Monitor, Upload, Keyboard, ShieldCheck, Trash2 } from '@lucide/vue'
+import { CircleHelp, Check, Database, Download, FolderCog, Settings, Sun, Moon, Monitor, Upload, Keyboard, ShieldCheck, Trash2, AppWindow, LayoutGrid, List } from '@lucide/vue'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { AppSettings } from '@/lib/types'
 import { api } from '@/lib/api'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 const store=useWorkspaceStore()
 const busy=ref(false)
 const section=ref('appearance')
-const settingsMenu=[{id:'appearance',label:'外观',icon:Settings},{id:'data',label:'数据与备份',icon:Database},{id:'launcher',label:'快捷启动',icon:Keyboard},{id:'backup',label:'自动备份',icon:ShieldCheck},{id:'trash',label:'回收站',icon:Trash2},{id:'about',label:'关于',icon:CircleHelp}]
+const settingsMenu=[{id:'appearance',label:'外观',icon:Settings},{id:'library',label:'应用库',icon:AppWindow},{id:'data',label:'数据与备份',icon:Database},{id:'launcher',label:'快捷启动',icon:Keyboard},{id:'backup',label:'自动备份',icon:ShieldCheck},{id:'trash',label:'回收站',icon:Trash2},{id:'about',label:'关于',icon:CircleHelp}]
 const fontSizes=computed(()=>[...new Set([12,14,16,18,20,24,store.settings.font_size])].sort((a,b)=>a-b))
 const sidebarWidths=[100,140,180,200,220,240,260,280]
 const radii=[{value:0,label:'直角 · 0 px'},{value:4,label:'微圆角 · 4 px'},{value:8,label:'小圆角 · 8 px'},{value:12,label:'中圆角 · 12 px'},{value:16,label:'大圆角 · 16 px（默认）'},{value:24,label:'超大圆角 · 24 px'}]
@@ -27,6 +28,8 @@ async function setAccent(accent:AppSettings['accent']){try{await store.setSettin
 async function setFont(value:unknown){try{await store.setSetting('font_size',Number(value))}catch{}}
 async function setSidebarWidth(value:unknown){try{await store.setSetting('sidebar_width',Number(value))}catch{}}
 async function setRadius(value:unknown){try{await store.setSetting('border_radius',Number(value))}catch{}}
+async function setLibraryDisplay(value:unknown){if(value!=='grid'&&value!=='list')return;try{await store.saveClient('lumo-library-display',value)}catch(e){store.notify(`保存应用库设置失败：${String(e)}`)}}
+async function setLibraryDensity(value:unknown){if(value!=='compact'&&value!=='standard'&&value!=='comfortable')return;try{await store.saveClient('lumo-library-density',value)}catch(e){store.notify(`保存应用库设置失败：${String(e)}`)}}
 async function chooseDataPath(){const result=await open({directory:true,multiple:false});if(typeof result!=='string')return;if(!await askConfirmation(`将全部设置、笔记、便签和其他数据迁移到：\n${result}\n\n目标目录需要为空；迁移前自动备份，原数据保留。继续吗？`))return;busy.value=true;try{await store.flushPendingSaves();store.bootstrap=await api.moveDataDirectory(result);await store.reload();store.notify('数据迁移完成，后续使用新目录')}catch(e){store.notify(`迁移失败：${String(e)}`)}finally{busy.value=false}}
 async function createBackup(){const path=await save({defaultPath:`Lumo-Hub-备份-${new Date().toISOString().slice(0,10)}.lumo`,filters:[{name:'Lumo-Hub 备份',extensions:['lumo']}]});if(!path)return;busy.value=true;try{await store.flushPendingSaves();await api.exportBackup(path);store.notify('备份已导出')}catch(e){store.notify(`备份失败：${String(e)}`)}finally{busy.value=false}}
 async function restoreBackup(){const path=await open({defaultPath:`${store.bootstrap.data_dir}/backups`,multiple:false,filters:[{name:'Lumo-Hub 备份',extensions:['lumo']}]});if(typeof path!=='string')return;if(!await askConfirmation('恢复备份会替换当前笔记、便签、倒数日、应用库数据和外观设置。恢复前会自动创建当前数据备份。确认继续？'))return;busy.value=true;try{await store.flushPendingSaves();await api.restoreBackup(path);const current=await api.bootstrap();store.bootstrap=current.bootstrap;store.settings=current.settings;await store.reload();store.notify('备份已恢复')}catch(e){store.notify(`恢复失败：${String(e)}`)}finally{busy.value=false}}
@@ -49,6 +52,15 @@ async function restoreBackup(){const path=await open({defaultPath:`${store.boots
           <Field><FieldLabel for="global-font-size">全局字体大小</FieldLabel><Select :model-value="String(store.settings.font_size)" @update:model-value="setFont"><SelectTrigger id="global-font-size" class="w-full max-w-xs"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="size in fontSizes" :key="size" :value="String(size)">{{ size }} px{{ size===14?'（默认）':'' }}</SelectItem></SelectGroup></SelectContent></Select><FieldDescription>选择适合阅读的字号，整个应用立即更新。</FieldDescription></Field>
         </FieldGroup>
       </div>
+    </Card>
+    </div>
+    <div v-else-if="section==='library'" class="settings-panel">
+    <Card class="p-6">
+      <div class="mb-6 flex items-center gap-3"><div class="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><AppWindow /></div><div><h2 class="font-semibold">应用库</h2><p class="text-sm text-muted-foreground">设置应用库启动项的显示方式和排列密度。</p></div></div>
+      <FieldGroup>
+        <Field orientation="horizontal"><div class="min-w-0 flex-1"><FieldLabel>显示方式</FieldLabel><FieldDescription>选择网格或列表布局。</FieldDescription></div><ToggleGroup type="single" :model-value="String(store.settings.client?.['lumo-library-display']??'grid')" variant="outline" size="sm" aria-label="应用库显示方式" @update:model-value="setLibraryDisplay"><ToggleGroupItem value="grid" aria-label="网格展示"><LayoutGrid /></ToggleGroupItem><ToggleGroupItem value="list" aria-label="列表展示"><List /></ToggleGroupItem></ToggleGroup></Field>
+        <Field orientation="horizontal"><div class="min-w-0 flex-1"><FieldLabel for="library-density">网格密度</FieldLabel><FieldDescription>调整网格布局中每个启动项的占用空间。</FieldDescription></div><Select :model-value="String(store.settings.client?.['lumo-library-density']??'standard')" @update:model-value="setLibraryDensity"><SelectTrigger id="library-density" class="w-32"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="compact">紧凑</SelectItem><SelectItem value="standard">标准</SelectItem><SelectItem value="comfortable">宽松</SelectItem></SelectGroup></SelectContent></Select></Field>
+      </FieldGroup>
     </Card>
     </div>
     <div v-else-if="section=== 'data'" class="settings-panel">

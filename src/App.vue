@@ -185,7 +185,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
     </Card>
   </main>
   <div v-else class="flex h-dvh overflow-hidden bg-background">
-    <aside class="flex shrink-0 flex-col bg-card/70 transition-[width] duration-200" :style="{width:sidebarCollapsed?'4.5rem':`${store.settings.sidebar_width ?? 240}px`}">
+    <aside class="flex shrink-0 flex-col border-r border-border bg-card/70 transition-[width] duration-200" :style="{width:sidebarCollapsed?'4.5rem':`${store.settings.sidebar_width ?? 240}px`}">
       <div class="flex h-16 shrink-0 items-center border-b border-border" :class="sidebarCollapsed?'justify-center px-2':narrowSidebar?'px-2':'px-4'" @mousedown="startWindowDrag">
         <div class="flex items-center gap-2"><div class="flex size-8 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">L</div><p v-if="!sidebarCollapsed" class="text-sm font-semibold tracking-tight">Lumo</p></div>
       </div>
