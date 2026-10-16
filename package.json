@@ -1,11 +1,12 @@
 {
   "name": "lumo-hub",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2-beta.0",
   "type": "module",
+  "packageManager": "pnpm@10.4.1",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "dev": "vite --configLoader native",
+    "build": "vue-tsc --noEmit && vite build --configLoader native",
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

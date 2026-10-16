@@ -8,7 +8,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { exit } from '@tauri-apps/plugin-process'
 import { open } from '@tauri-apps/plugin-dialog'
-import { AppWindow, BookOpenText, CalendarDays, ChevronRight, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Sun, Moon, Monitor, Check } from '@lucide/vue'
+import { AppWindow, BookOpenText, CalendarDays, ChevronRight, CircleHelp, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Sun, Moon, Monitor, Check } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { AppSettings } from '@/lib/types'
@@ -87,6 +87,7 @@ function handleSearchKeydown(event:KeyboardEvent){
   else if(event.key==='Enter'&&searchOpen.value){event.preventDefault();void openResult(searchResults.value[activeSearchIndex.value])}
 }
 async function closeWindow(){try{await store.flushPendingSaves();await api.closeMain()}catch(e){store.notify(`无法关闭程序：${String(e)}`)}}
+async function completeWelcomeAndShowLauncher(){await store.completeWelcome();await api.showLauncher()}
 function startWindowDrag(event: MouseEvent){
   if(event.button!==0 || (event.target as HTMLElement).closest('button,input,textarea,select,a,[data-no-drag]'))return
   void getCurrentWindow().startDragging().catch(()=>{})
@@ -179,7 +180,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
       <p class="mb-3 text-sm font-medium text-primary">欢迎来到 Lumo-Hub</p>
       <h1 class="max-w-lg text-4xl font-semibold leading-tight tracking-tight">把日常的小事，<br />安放在一个地方。</h1>
       <p class="mt-5 max-w-md text-base leading-7 text-muted-foreground">记录想法、整理笔记、记住重要日子，也让常用的应用和文件触手可及。你的数据保存在本机。</p>
-      <p class="mt-4 text-sm text-muted-foreground">按 {{ store.settings.launcher.shortcut }} 可随时唤出快捷面板，输入名称后按回车打开。</p><div class="mt-8 flex flex-wrap gap-3"><Button class="min-w-36" @click="store.completeWelcome">开始使用<ChevronRight data-icon="inline-end" /></Button><Button variant="outline" @click="store.completeWelcome().then(()=>api.showLauncher())">试用快捷启动</Button></div>
+      <p class="mt-4 text-sm text-muted-foreground">按 {{ store.settings.launcher.shortcut }} 可随时唤出快捷面板，输入名称后按回车打开。</p><div class="mt-8 flex flex-wrap gap-3"><Button class="min-w-36" @click="store.completeWelcome">开始使用<ChevronRight data-icon="inline-end" /></Button><Button variant="outline" @click="completeWelcomeAndShowLauncher">试用快捷启动</Button></div>
       <p class="mt-8 text-xs text-muted-foreground">简洁、本地、属于你的工作台</p>
     </Card>
   </main>

@@ -24,7 +24,7 @@ pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
                 .join("quick-launch-webview"),
         )
         .title("Lumo 快捷启动")
-        .inner_size(680.0, 480.0)
+        .inner_size(800.0, 560.0)
         .resizable(false)
         .decorations(false)
         .always_on_top(true)
@@ -36,8 +36,8 @@ pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
     };
     window
         .set_size(tauri::LogicalSize::new(
-            if minimal { 960.0 } else { 680.0 },
-            if minimal { 680.0 } else { 480.0 },
+            if minimal { 1040.0 } else { 800.0 },
+            if minimal { 720.0 } else { 560.0 },
         ))
         .map_err(|e| e.to_string())?;
     window

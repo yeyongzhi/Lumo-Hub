@@ -1,62 +1,68 @@
 # Lumo-Hub
 
-Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台。首版使用 Tauri 2、Rust、Vue 3、TypeScript、Tailwind CSS 和 shadcn-vue 组件方案。
+Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台，使用 Tauri 2、Rust、Vue 3、TypeScript、Tailwind CSS 和 shadcn-vue。当前准备发布版本为 **0.1.2-beta.0**（Beta 0）。
 
-## 项目文档
+## 功能
 
-- [开发说明书](./开发说明书.md)：首版产品范围和验收要求。
-- [技术方案](./技术方案.md)：前后端架构、SQLite、数据目录、备份、更新与 Windows 分发方案。
+- 可编辑的首页、倒数日、便签和 Markdown 笔记。
+- 应用库：管理应用、网页和文件，支持分组、收藏、扫描并勾选导入、批量整理和失效路径定位。
+- 快捷启动：全局快捷键唤出，支持拼音/别名搜索、方向键选择和快速打开。
+- 本地全局搜索、主题和强调色设置。
+- 数据目录迁移、手动与自动备份、恢复和回收站。
+- 系统托盘：关闭主窗口后可留在托盘，支持从托盘重新打开、唤出快捷启动或退出程序。
+- 关于页手动检查更新；更新包使用 Tauri updater 签名校验。
 
-## 本地运行
+应用数据默认随正式安装目录保存，首次启动会导入可发现的旧数据；也可以在设置中迁移到其他目录。普通卸载保留用户数据；开始菜单提供单独的“卸载并清理数据”入口。开发预览使用独立的数据目录。
 
-需要 Node.js、npm、Rust stable、Windows C++ Build Tools 和 WebView2。依赖安装后：
+## 开发环境
 
-```powershell
-npm install
-npm run tauri:dev
-```
+- Windows 10/11
+- Node.js 22
+- pnpm
+- Rust stable、Windows C++ Build Tools 和 WebView2
 
-生成 Windows NSIS 安装程序：
-
-```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY = Join-Path $env:USERPROFILE '.tauri\lumo-hub.key'
-npm run tauri:build
-Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY
-```
-
-本机 updater 私钥保存在用户目录的 `.tauri\lumo-hub.key`，请单独安全备份，切勿提交到仓库。公钥已配置在 `src-tauri/tauri.conf.json`。构建产物位于 `src-tauri/target/release/bundle/nsis/`，包含安装包与对应 `.sig` 文件。正式发布前，用 `scripts/prepare-release.ps1 -Repository "你的账号/你的仓库"` 生成 `release/latest.json`，并将这三个文件上传到同一个 GitHub Release；还需把配置中的 `OWNER/REPO` 换成真实仓库地址。
-
-`src-tauri/target/release/lumo-hub.exe` 是编译产物；日常安装请使用 `bundle/nsis/` 下的 `*-setup.exe`。旁边的 `.exe.sig` 用于 Tauri updater 校验更新包，并不是 Windows 的 Authenticode 代码签名。若程序启动即退出，可查看 `%LOCALAPPDATA%\Lumo-Hub\startup-error.log` 和 Windows 事件查看器中的应用程序错误；启动日志只在 Rust panic 时写入。
-
-安装包默认以当前 Windows 用户安装。正式版数据默认与程序使用同一目录：选择安装到 `D:\Program\Lumo` 后，数据库、设置、笔记和备份都保存在该目录。首次启动会导入原有 AppData 数据并保留旧文件；已有安装目录数据不会被覆盖。设置中支持迁移到自定义数据目录，后续启动继续使用新目录。目录必须对当前用户可写。开发预览使用独立开发数据目录。详情见 [数据存储说明](./数据存储说明.md)。
-
-## 首版功能
-
-- 首页、倒数日、便签和 Markdown 笔记。
-- 应用库：管理应用、网页、文件，支持自定义分组、收藏和扫描后勾选导入。
-- 本地全局搜索、浅色/深色/跟随系统、七套强调色和全局字体大小。
-- 数据目录迁移、备份和恢复。
-- 关于页手动检查更新；更新签名已配置，GitHub Release 地址需在发布前配置。
-
-
-## 快捷操作
-
-- **Alt+Space** 唤出快捷启动面板，↑/↓ 选择、Enter 打开、Esc 收起。程序需保持运行，可最小化；在设置中更改快捷键。
-- 搜索支持名称、路径、别名、拼音和首字母，收藏与常用项目优先。应用库编辑页可填写别名。
-- 应用卡片支持右键菜单，工具栏“批量管理”可批量移组、收藏和移除。
-- 设置页提供自动备份（默认每天一次、保留 7 份）及回收站。删除的便签、笔记和倒数日可恢复。
-- 首页“编辑首页”后，通过模块右上角内容图标选择指定便签、笔记或倒数日，完成后保存。
-
-## 文档站与自动部署
-
-文档站使用 VitePress，直接引用本 README、开发说明书和技术方案。
+安装前端依赖并启动桌面开发预览：
 
 ```powershell
-npm run docs:dev
-npm run docs:build
-npm run docs:preview
+pnpm install --frozen-lockfile
+pnpm run tauri:dev
 ```
 
-GitHub Actions 在每次推送到 `main` 时构建 `docs/.vitepress/dist` 并部署到 GitHub Pages，也支持手动触发。`dev` 用于开发，合并到 `main` 后发布文档。
+常用命令：
 
-首次启用：在仓库 Settings → Pages → Build and deployment → Source 中选择 **GitHub Actions**。站点地址为 https://yeyongzhi.github.io/Lumo-Hub/ 。文档部署不生成 Windows 安装包；安装包仍通过 `npm run tauri:build` 构建。
+```powershell
+pnpm run build       # TypeScript 检查和前端生产构建
+pnpm run tauri:build # Windows NSIS 安装包和 updater 签名产物
+pnpm run docs:dev
+pnpm run docs:build
+```
+
+## Beta 发布
+
+版本遵循 SemVer 预发布编号：首个 Beta 使用 `0.1.2-beta.0`，后续 Beta 依次递增为 `0.1.2-beta.1`、`0.1.2-beta.2`，稳定发布时使用 `0.1.2`。前端、Tauri 和 Rust crate 的版本号需要保持一致。
+
+发布前需要：
+
+1. 确认工作区干净，提交待发布改动，并通过 `pnpm run build`、Rust 检查及 Windows 安装验证。
+2. 使用与配置公钥匹配的 Tauri updater 私钥构建。私钥必须从安全备份或发布机密中恢复，不能新生成一把替代密钥，否则旧版本无法验证后续更新。
+3. 在 PowerShell 设置私钥文件路径（有密码时再设置密码变量），运行构建：
+
+   ```powershell
+   $env:TAURI_SIGNING_PRIVATE_KEY = Join-Path $env:USERPROFILE '.tauri\lumo-hub.key'
+   pnpm run tauri:build
+   Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY
+   ```
+
+4. 使用 `scripts/prepare-release.ps1 -Repository "yeyongzhi/Lumo-Hub"` 生成 `release/latest.json`，并将 NSIS 安装包、`.sig` 和 `latest.json` 一并附加到对应 GitHub Release。
+
+当前 updater 地址使用 GitHub `releases/latest` 清单。GitHub 的 latest 通道面向非预发布 Release；Beta 版本可先通过 Release 安装包分发，应用内 Beta 更新通道需在后续配置专用清单地址后启用。updater `.sig` 是 Tauri 更新验签文件，不是 Windows Authenticode 代码签名。
+
+安装包输出目录：`src-tauri/target/release/bundle/nsis/`。程序安装和升级不会主动清理用户数据；发布前仍应验证安装、升级、托盘退出和数据保留流程。
+
+## 数据与故障排查
+
+详见[数据存储说明](./数据存储说明.md)、[开发说明书](./开发说明书.md)和[技术方案](./技术方案.md)。启动异常日志位于 `%LOCALAPPDATA%\Lumo-Hub\startup-error.log`；也可查看 Windows 事件查看器中的应用程序错误。
+
+## 文档站
+
+文档使用 VitePress，GitHub Actions 会在 `main` 分支部署到 [GitHub Pages](https://yeyongzhi.github.io/Lumo-Hub/)。文档部署与 Windows 应用安装包发布相互独立。

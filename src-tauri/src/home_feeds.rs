@@ -21,7 +21,7 @@ pub async fn fetch_home_feed(kind: String, city: Option<String>) -> Result<Value
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .connect_timeout(Duration::from_secs(8))
-        .user_agent("Lumo-Hub/0.1.1")
+        .user_agent("Lumo-Hub/0.1.2-beta.0")
         .build().map_err(|_| "无法创建网络连接")?;
     let response = client.get(url).send().await.map_err(|e| if e.is_timeout() { "请求超时，请稍后刷新".to_string() } else { "网络连接失败，请检查网络后刷新".to_string() })?
         .error_for_status().map_err(|e| format!("服务暂不可用：{}", e.status().map(|s| s.as_u16()).unwrap_or(0)))?;

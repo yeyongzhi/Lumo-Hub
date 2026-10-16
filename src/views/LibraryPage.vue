@@ -133,7 +133,7 @@ const shownResources=computed(()=>{
   return sortMode.value==='custom'?stableResourceOrder(sorted,customOrder.value):stableResourceOrder(sorted,sessionOrder.value)
 })
 watch([sortMode,activeFilter,query],()=>{sessionOrder.value=[]})
-watch(shownResources,items=>{if(!query.value.trim()&&!sessionOrder.value.length)sessionOrder.value=items.map(i=>i.id)},{immediate:true})
+watch(shownResources,items=>{if(!query.value.trim()&&!sessionOrder.value.length&&items.length)sessionOrder.value=items.map(i=>i.id)},{immediate:true})
 const batchMode=ref(false), selectedIds=ref<string[]>([]), batchBusy=ref(false), deleteBatch=ref(false)
 watch([activeFilter,query],()=>{selectedIds.value=[]})
 function toggleSelection(id:string){selectedIds.value=selectedIds.value.includes(id)?selectedIds.value.filter(x=>x!==id):[...selectedIds.value,id]}

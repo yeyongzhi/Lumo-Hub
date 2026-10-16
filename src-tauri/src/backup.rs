@@ -330,7 +330,12 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
         let _ = fs::remove_dir_all(&stage);
         return Err(error);
     }
-    let mut extras=ExtraSwap::new(&current,&stage)?;
+    let mut extras = ExtraSwap::new(&current);
+    if let Err(error) = extras.apply(&stage) {
+        drop(extras);
+        let _=fs::remove_dir_all(&stage);
+        return Err(error);
+    }
     let mut conn = state.db.lock().map_err(|_| "数据库不可用")?;
     let _ = conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| {
         r.get::<_, i64>(0)
@@ -427,7 +432,8 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
             return Err(error);
         }
     };
-    *conn = new_conn;extras.commit();
+    *conn = new_conn;
+    extras.commit();
     let new_settings = storage::load_settings(&current);
     *state.settings.lock().map_err(|_| "设置状态不可用")? = new_settings;
     crate::launcher::sync(&app);
@@ -438,12 +444,72 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
     Ok(())
 }
 
-struct ExtraSwap {root:PathBuf,held:Vec<(String,Option<PathBuf>)>,committed:bool}
-impl ExtraSwap {
- fn new(root:&Path,stage:&Path)->Result<Self,String>{let mut swap=Self{root:root.into(),held:vec![],committed:false};for name in ["notes","tags.json","cache"]{let p=root.join(name);let hold=if p.exists(){let hold=root.join(format!(".restore-{}-{}",name,uuid::Uuid::new_v4()));fs::rename(&p,&hold).map_err(|e|e.to_string())?;Some(hold)}else{None};swap.held.push((name.into(),hold));if stage.join(name).exists(){fs::rename(stage.join(name),p).map_err(|e|e.to_string())?;}}Ok(swap)}
- fn commit(&mut self){self.committed=true;}
+struct ExtraSwap {
+    root: PathBuf,
+    held: Vec<(String, Option<PathBuf>)>,
+    committed: bool,
 }
-impl Drop for ExtraSwap {fn drop(&mut self){for (name,hold) in &self.held{let p=self.root.join(name);let remove=|p:&Path|{if p.is_dir(){let _=fs::remove_dir_all(p);}else{let _=fs::remove_file(p);}};if self.committed{if let Some(hold)=hold{remove(hold)}}else{remove(&p);if let Some(hold)=hold{let _=fs::rename(hold,p);}}}}}
+impl ExtraSwap {
+    fn new(root: &Path) -> Self {
+        Self {
+            root: root.into(),
+            held: vec![],
+            committed: false,
+        }
+    }
+
+    fn apply(&mut self, stage: &Path) -> Result<(), String> {
+        for name in ["notes", "tags.json", "cache"] {
+            let path = self.root.join(name);
+            let hold = if path.exists() {
+                let hold = self
+                    .root
+                    .join(format!(".restore-{}-{}", name, uuid::Uuid::new_v4()));
+                fs::rename(&path, &hold).map_err(|e| format!("无法暂存旧数据 {name}：{e}"))?;
+                Some(hold)
+            } else {
+                None
+            };
+
+            // Register each completed move before attempting the next one so Drop can
+            // restore it if a later filesystem operation fails.
+            self.held.push((name.into(), hold));
+            let staged = stage.join(name);
+            if staged.exists() {
+                fs::rename(&staged, &path).map_err(|e| format!("无法恢复数据 {name}：{e}"))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn commit(&mut self) {
+        self.committed = true;
+    }
+}
+impl Drop for ExtraSwap {
+    fn drop(&mut self) {
+        for (name, hold) in &self.held {
+            let path = self.root.join(name);
+            let remove = |path: &Path| {
+                if path.is_dir() {
+                    let _ = fs::remove_dir_all(path);
+                } else {
+                    let _ = fs::remove_file(path);
+                }
+            };
+            if self.committed {
+                if let Some(hold) = hold {
+                    remove(hold);
+                }
+            } else {
+                remove(&path);
+                if let Some(hold) = hold {
+                    let _ = fs::rename(hold, path);
+                }
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod file_backup_tests {
  use super::*;
