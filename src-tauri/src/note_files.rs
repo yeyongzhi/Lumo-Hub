@@ -52,25 +52,37 @@ fn decode(path: &Path) -> Result<(Note, Vec<String>), String> {
         h.tags,
     ))
 }
-pub fn list(root: &Path) -> Result<Vec<(Note, Vec<String>)>, String> {
+pub fn inspect(root: &Path) -> Result<(Vec<(Note, Vec<String>)>, Vec<String>), String> {
     let dir = root.join("notes");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut items = vec![];
+    let mut issues = vec![];
     let mut ids = std::collections::HashSet::new();
     for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         if entry.file_type().map_err(|e| e.to_string())?.is_file()
             && entry.path().extension().is_some_and(|s| s == "md")
         {
-            let item = decode(&entry.path())?;
+            let path = entry.path();
+            let item = match decode(&path) {
+                Ok(item) => item,
+                Err(error) => {
+                    issues.push(format!("{}：{}", path.display(), error));
+                    continue;
+                }
+            };
             if !ids.insert(item.0.id.clone()) {
-                return Err("发现重复笔记 ID".into());
+                issues.push(format!("{}：笔记 ID 与其他文件重复", path.display()));
+                continue;
             }
             items.push(item);
         }
     }
     items.sort_by(|a, b| b.0.updated_at.cmp(&a.0.updated_at));
-    Ok(items)
+    Ok((items, issues))
+}
+pub fn list(root: &Path) -> Result<Vec<(Note, Vec<String>)>, String> {
+    Ok(inspect(root)?.0)
 }
 pub fn write(root: &Path, n: &Note, tags: Vec<String>) -> Result<(), String> {
     uuid::Uuid::parse_str(&n.id).map_err(|_| "笔记 ID 无效")?;
@@ -98,14 +110,21 @@ pub fn write(root: &Path, n: &Note, tags: Vec<String>) -> Result<(), String> {
 pub fn find_path(root: &Path, id: &str) -> Result<std::path::PathBuf, String> {
     for entry in fs::read_dir(root.join("notes")).map_err(|e| e.to_string())? {
         let p = entry.map_err(|e| e.to_string())?.path();
-        if p.extension().is_some_and(|s| s == "md") && decode(&p)?.0.id == id {
-            return Ok(p);
+        if p.extension().is_some_and(|s| s == "md") {
+            if decode(&p).is_ok_and(|(note, _)| note.id == id) {
+                return Ok(p);
+            }
         }
     }
     Err("找不到笔记文件".into())
 }
 pub fn sync(root: &Path, conn: &mut Connection) -> Result<(), String> {
-    let items = list(root)?;
+    let (items, issues) = inspect(root)?;
+    // Keep the last indexed snapshot until every Markdown file can be parsed. This
+    // prevents one damaged file from making other notes disappear from the index.
+    if !issues.is_empty() {
+        return Ok(());
+    }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM notes", [])
         .map_err(|e| e.to_string())?;
@@ -119,6 +138,7 @@ pub fn sync(root: &Path, conn: &mut Connection) -> Result<(), String> {
     tx.commit().map_err(|e| e.to_string())
 }
 pub fn migrate(root: &Path, conn: &mut Connection, s: &AppSettings) -> Result<(), String> {
+    reconcile_trash(root, conn)?;
     for name in ["setting.json", "app.json"] {
         let p = root.join(name);
         if p.exists() {
@@ -173,6 +193,55 @@ pub fn migrate(root: &Path, conn: &mut Connection, s: &AppSettings) -> Result<()
     sync(root, conn)?;
     save_tags(root, s)?;
     atomic(&root.join("notes/.migrated"), b"1")
+}
+
+/// Reconcile Markdown files with note entries in the recycle bin after an interrupted
+/// cross-file/database delete or restore. The database payload remains the recovery source.
+pub fn reconcile_trash(root: &Path, conn: &Connection) -> Result<(), String> {
+    let dir = root.join("notes");
+    let trash_dir = dir.join(".recycle");
+    fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
+    let mut statement = conn
+        .prepare("SELECT json_extract(payload,'$.id') FROM recycle_bin WHERE kind='note'")
+        .map_err(|e| e.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let trashed = rows
+        .collect::<rusqlite::Result<std::collections::HashSet<_>>>()
+        .map_err(|e| e.to_string())?;
+    drop(statement);
+
+    for id in &trashed {
+        let staged = trash_dir.join(format!("{id}.md"));
+        if let Ok(active) = find_path(root, id) {
+            if staged.exists() {
+                fs::remove_file(active).map_err(|e| e.to_string())?;
+            } else {
+                fs::rename(active, staged).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    for entry in fs::read_dir(&trash_dir).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if !path.is_file() || path.extension().is_none_or(|extension| extension != "md") {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if trashed.contains(id) {
+            continue;
+        }
+        let restored = dir.join(format!("{id}.md"));
+        if restored.exists() {
+            // Keep the staged copy rather than overwrite a user's current file.
+            continue;
+        }
+        fs::rename(path, restored).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 pub fn save_tags(root: &Path, s: &AppSettings) -> Result<(), String> {
     let items = list(root)?;
@@ -266,7 +335,7 @@ mod tests {
         assert!(root.0.join("backups/pre-markdown-migration.db").exists());
     }
     #[test]
-    fn malformed_markdown_does_not_clear_index() {
+    fn malformed_markdown_does_not_clear_index_and_is_reported() {
         let root = Folder::new();
         let mut conn = crate::db::open(&root.0.join("app.db")).unwrap();
         conn.execute(
@@ -276,7 +345,9 @@ mod tests {
         .unwrap();
         fs::create_dir_all(root.0.join("notes")).unwrap();
         fs::write(root.0.join("notes/broken.md"), "broken").unwrap();
-        assert!(sync(&root.0, &mut conn).is_err());
+        sync(&root.0, &mut conn).unwrap();
+        let (_, issues) = inspect(&root.0).unwrap();
+        assert_eq!(issues.len(), 1);
         assert_eq!(
             conn.query_row("SELECT count(*) FROM notes", [], |r| r.get::<_, i64>(0))
                 .unwrap(),

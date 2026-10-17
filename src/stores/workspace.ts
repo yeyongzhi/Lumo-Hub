@@ -6,7 +6,7 @@ import { applySettings } from '@/lib/theme'
 import { defaultHomeLayout } from '@/lib/home-layout'
 import type { AppSettings, BootstrapInfo, Countdown, Note, Resource, ResourceGroup, Sticky } from '@/lib/types'
 
-const defaults: AppSettings = { product: {close_to_tray:true,autostart:false,reminder_hour:9,reminders:{},pinned_stickies:[],note_tags:{}}, theme_mode: 'system', accent: 'blue', font_size: 14, border_radius: 16, sidebar_width: 240, common_launchers: ["computer","recycle_bin","explorer","cmd","powershell","control_panel","notepad","calculator"], welcome_completed: false, home_layout: defaultHomeLayout(), launcher: { enabled: true, shortcut: "Alt+Space", minimal_mode: false }, auto_backup: { enabled: true, interval_hours: 24, retain: 7 } }
+const defaults: AppSettings = { product: {close_to_tray:true,autostart:false,reminder_hour:9,reminders:{},pinned_stickies:[],note_tags:{}}, theme_mode: 'system', accent: 'blue', font_size: 14, border_radius: 16, sidebar_width: 240, common_launchers: ["computer","recycle_bin","explorer","cmd","powershell","control_panel","notepad","calculator","task_manager","windows_settings"], welcome_completed: false, home_layout: defaultHomeLayout(), launcher: { enabled: true, shortcut: "Alt+Space", minimal_mode: false }, auto_backup: { enabled: true, interval_hours: 24, retain: 7 } }
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const initialized = ref(false)
@@ -17,6 +17,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const settings = ref<AppSettings>({ ...defaults })
   const bootstrap = ref<BootstrapInfo>({ data_dir: '', default_data_dir: '' })
   const notes = ref<Note[]>([])
+  const noteFileIssues = ref<string[]>([])
   const stickies = ref<Sticky[]>([])
   const countdowns = ref<Countdown[]>([])
   const resources = ref<Resource[]>([])
@@ -53,13 +54,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function reload() {
     await settingChain
-    const [n, s, c, r, g] = await Promise.all([
-      api.listNotes(), api.listStickies(), api.listCountdowns(), api.listResources(), api.listGroups(),
+    const [n, noteIssues, s, c, r, g] = await Promise.all([
+      api.listNotes(), api.noteFileIssues(), api.listStickies(), api.listCountdowns(), api.listResources(), api.listGroups(),
     ])
     const currentSettings=await api.bootstrap()
     settings.value={...currentSettings.settings,...Object.fromEntries(pendingSettings)}
     for(const key of confirmedSettings.keys()){if(!pendingSettings.has(key))confirmedSettings.set(key,currentSettings.settings[key as keyof AppSettings])}
     notes.value = n
+    noteFileIssues.value = noteIssues
     stickies.value = s
     countdowns.value = c
     resources.value = r
@@ -131,5 +133,5 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await Promise.all([...pendingSaves].map(flush => flush()))
   }
 
-  return { initialized, cleanUninstall, startupError, recoveryError, message, settings, bootstrap, notes, stickies, countdowns, resources, groups, searchTarget, initialize, recoverDataDirectory, reload, notify, setSetting, saveClient, completeWelcome, launchResource, registerPendingSave, flushPendingSaves }
+  return { initialized, cleanUninstall, startupError, recoveryError, message, settings, bootstrap, notes, noteFileIssues, stickies, countdowns, resources, groups, searchTarget, initialize, recoverDataDirectory, reload, notify, setSetting, saveClient, completeWelcome, launchResource, registerPendingSave, flushPendingSaves }
 })

@@ -305,14 +305,14 @@ pub fn load_settings(data_dir: &Path) -> AppSettings {
     let path = if settings_path(data_dir).exists() { settings_path(data_dir) } else { data_dir.join("app.json") };
     if let Ok(bytes) = fs::read(&path) {
         if let Ok(settings) = serde_json::from_slice(&bytes) {
-            let mut settings=settings;let _=crate::note_files::load_tags(data_dir,&mut settings);return settings;
+            let mut settings=settings;crate::models::migrate_common_launchers(&mut settings);let _=crate::note_files::load_tags(data_dir,&mut settings);return settings;
         }
     }
     let backup = path.with_extension("json.bak");
     if let Ok(bytes) = fs::read(&backup) {
         if let Ok(settings) = serde_json::from_slice(&bytes) {
             let _ = fs::write(&path, bytes);
-            let mut settings=settings;let _=crate::note_files::load_tags(data_dir,&mut settings);return settings;
+            let mut settings=settings;crate::models::migrate_common_launchers(&mut settings);let _=crate::note_files::load_tags(data_dir,&mut settings);return settings;
         }
     }
     AppSettings::default()

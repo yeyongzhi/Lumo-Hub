@@ -83,7 +83,7 @@ export interface AppSettings { client?:Record<string,unknown>
   common_launchers: string[]
   welcome_completed: boolean
   home_layout: HomeWidget[]
-  launcher: { enabled: boolean; shortcut: string; minimal_mode: boolean }
+  launcher: { enabled: boolean; shortcut: string; minimal_mode: boolean; window_width?: number | null; window_height?: number | null }
   auto_backup: { enabled: boolean; interval_hours: number; retain: number }
 }
 

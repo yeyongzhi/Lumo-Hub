@@ -2,7 +2,7 @@
 import MarkdownIt from 'markdown-it'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { BookOpenText, FilePlus2, Pencil, Search, Trash2, FileOutput, ChevronDown, Settings, Plus, Tags, Ellipsis, ArrowRightLeft } from '@lucide/vue'
+import { BookOpenText, FilePlus2, Pencil, Search, Trash2, FileOutput, ChevronDown, Settings, Plus, Tags, Ellipsis } from '@lucide/vue'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuGroup, ContextMenuItem } from '@/components/ui/context-menu'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/lib/api'
 import { useWorkspaceStore } from '@/stores/workspace'
 
@@ -76,7 +77,6 @@ async function assignTag(tag:string,checked:boolean){
   try{if(!await saveTags())tagDraft.value=previous}finally{assigningTag.value=false}
 }
 async function exportNote(id=activeId.value){if(!await saveNow())return;const note=store.notes.find(item=>item.id===id);if(!note)return;const filename=(note.title||'笔记').replace(/[<>:"/\\|?*]/g,'_');const path=await save({defaultPath:filename+'.md',filters:[{name:'Markdown',extensions:['md']}]});if(path)try{await api.exportMarkdown(id,path);store.notify('笔记已导出')}catch(e){store.notify(String(e))}}
-async function copyToSticky(){if(!await saveNow())return;const note=store.notes.find(item=>item.id===activeId.value);if(!note)return;try{const item=await api.createSticky(note.title||'来自笔记',note.content);await store.reload();await api.openMainPage('stickies',item.id);store.notify('已复制为便签，原笔记保留')}catch(e){store.notify(`复制为便签失败：${String(e)}`)}}
 
 const deleteNoteOpen=ref(false)
 const deleteNoteId=ref('')
@@ -135,6 +135,11 @@ async function openMarkdownLink(event:MouseEvent){const anchor=(event.target as 
 
       <Card class="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
         <div class="shrink-0 px-1"><p class="text-base font-semibold">我的笔记 · {{ store.notes.length }}</p><p class="mt-1 text-xs text-muted-foreground">适合长期整理：支持 Markdown、标签与导出。</p></div>
+        <div v-if="store.noteFileIssues.length" role="alert" class="shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-5 text-foreground">
+          <p class="font-medium">有 {{ store.noteFileIssues.length }} 个 Markdown 文件未载入</p>
+          <p class="mt-1 text-muted-foreground">原文件已保留。请检查文件头部格式；修复后重新打开笔记页即可载入。</p>
+          <ScrollArea class="mt-2 max-h-24"><ul class="list-disc space-y-1 pl-4"><li v-for="issue in store.noteFileIssues" :key="issue" class="break-all">{{ issue }}</li></ul></ScrollArea>
+        </div>
         <div class="flex shrink-0 items-center gap-2"><div class="relative min-w-0 flex-1"><Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input v-model="filter" class="pl-9" placeholder="搜索笔记" aria-label="搜索笔记" /></div><Button size="icon" aria-label="新建笔记" title="新建笔记" @click="create"><FilePlus2 /></Button></div>
         <div class="flex shrink-0 items-center gap-2"><Select v-model="tagFilter"><SelectTrigger class="min-w-0 flex-1" aria-label="按标签筛选笔记"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">全部标签</SelectItem><SelectItem v-for="tag in allTags" :key="tag" :value="tag">{{ tag }}</SelectItem></SelectGroup></SelectContent></Select><TooltipProvider><Tooltip><TooltipTrigger as-child><Button variant="ghost" size="icon" aria-label="标签管理" :aria-pressed="managingTags" @click="openTagManager"><Settings /></Button></TooltipTrigger><TooltipContent>标签管理</TooltipContent></Tooltip></TooltipProvider></div>
         <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
@@ -155,7 +160,7 @@ async function openMarkdownLink(event:MouseEvent){const anchor=(event.target as 
         </div>
       </Card>
       <Tabs v-else-if="current" v-model="mode" class="min-h-0 min-w-0"><Card class="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden p-5">
-        <div class="flex shrink-0 items-center gap-3"><Input v-model="title" class="min-w-0" placeholder="无标题笔记" aria-label="笔记标题" /><div class="flex shrink-0 items-center gap-1"><TabsList aria-label="笔记显示模式"><TabsTrigger value="edit"><Pencil />编辑</TabsTrigger><TabsTrigger value="preview"><BookOpenText />预览</TabsTrigger></TabsList><DropdownMenu><DropdownMenuTrigger as-child><Button variant="outline" class="max-w-44" aria-label="选择笔记标签"><Tags data-icon="inline-start" /><span class="truncate">{{ selectedTags.length?`标签 · ${selectedTags.length}`:'标签' }}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" class="max-h-72 w-56 overflow-y-auto"><DropdownMenuLabel>选择标签（可多选）</DropdownMenuLabel><DropdownMenuGroup><DropdownMenuCheckboxItem v-for="tag in allTags" :key="tag" :model-value="selectedTags.includes(tag)" :disabled="assigningTag" @select="$event.preventDefault()" @update:model-value="value=>assignTag(tag,value===true)">{{ tag }}</DropdownMenuCheckboxItem></DropdownMenuGroup><p v-if="!allTags.length" class="px-2 py-3 text-sm text-muted-foreground">请先在标签管理中新增标签。</p></DropdownMenuContent></DropdownMenu><DropdownMenu><DropdownMenuTrigger as-child><Button variant="outline" size="icon" aria-label="更多笔记操作"><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" class="w-44"><DropdownMenuGroup><DropdownMenuItem @select="copyToSticky"><ArrowRightLeft />复制为便签</DropdownMenuItem><DropdownMenuItem @select="exportNote()"><FileOutput />导出 Markdown</DropdownMenuItem><DropdownMenuItem variant="destructive" @select="askDeleteNote(activeId)"><Trash2 />删除</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu></div></div>
+        <div class="flex shrink-0 items-center gap-3"><Input v-model="title" class="min-w-0" placeholder="无标题笔记" aria-label="笔记标题" /><div class="flex shrink-0 items-center gap-1"><TabsList aria-label="笔记显示模式"><TabsTrigger value="edit"><Pencil />编辑</TabsTrigger><TabsTrigger value="preview"><BookOpenText />预览</TabsTrigger></TabsList><DropdownMenu><DropdownMenuTrigger as-child><Button variant="outline" class="max-w-44" aria-label="选择笔记标签"><Tags data-icon="inline-start" /><span class="truncate">{{ selectedTags.length?`标签 · ${selectedTags.length}`:'标签' }}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" class="max-h-72 w-56 overflow-y-auto"><DropdownMenuLabel>选择标签（可多选）</DropdownMenuLabel><DropdownMenuGroup><DropdownMenuCheckboxItem v-for="tag in allTags" :key="tag" :model-value="selectedTags.includes(tag)" :disabled="assigningTag" @select="$event.preventDefault()" @update:model-value="value=>assignTag(tag,value===true)">{{ tag }}</DropdownMenuCheckboxItem></DropdownMenuGroup><p v-if="!allTags.length" class="px-2 py-3 text-sm text-muted-foreground">请先在标签管理中新增标签。</p></DropdownMenuContent></DropdownMenu><DropdownMenu><DropdownMenuTrigger as-child><Button variant="outline" size="icon" aria-label="更多笔记操作"><Ellipsis /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" class="w-44"><DropdownMenuGroup><DropdownMenuItem @select="exportNote()"><FileOutput />导出 Markdown</DropdownMenuItem><DropdownMenuItem variant="destructive" @select="askDeleteNote(activeId)"><Trash2 />删除</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu></div></div>
         <TabsContent value="edit" class="flex min-h-0 flex-1 overflow-hidden"><Textarea v-model="content" aria-label="笔记内容" class="h-full min-h-0 flex-1 resize-none overflow-y-auto" placeholder="# 新笔记\n\n在这里开始写作，支持常用 Markdown 语法。" /></TabsContent>
         <TabsContent value="preview" class="flex min-h-0 flex-1 overflow-hidden"><article class="markdown-preview min-h-0 max-w-none flex-1 overflow-auto rounded-2xl bg-muted/40 p-5 text-sm leading-7" v-html="rendered" @click="openMarkdownLink" /></TabsContent>
       </Card></Tabs>

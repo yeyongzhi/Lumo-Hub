@@ -36,6 +36,7 @@ export const api = {
   setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => invoke<AppSettings>('set_setting', { key, value }),
   completeWelcome: () => invoke<AppSettings>('complete_welcome'),
   listNotes: () => invoke<Note[]>('list_notes'),
+  noteFileIssues: () => invoke<string[]>('note_file_issues'),
   createNote: (title: string, content='') => invoke<Note>('create_note', { title, content }),
   updateNote: (id: string, title: string, content: string) => invoke<void>('update_note', { id, title, content }),
   deleteNote: (id: string) => invoke<void>('delete_note', { id }),

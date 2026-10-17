@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { launcherOrder, launcherSections } from '@/lib/launcher-preferences'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
 import { Keyboard, ShieldCheck, Trash2, RotateCcw } from '@lucide/vue'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,22 @@ const emit=defineEmits<{ restoreBackup: [] }>()
 const shortcut=ref(store.settings.launcher.shortcut), shortcutError=ref(''), saving=ref(false), backupBusy=ref(false), notificationBusy=ref(false), notificationStatus=ref('')
 const status=ref<BackupStatus>(), trash=ref<TrashItem[]>([]), loading=ref(true), error=ref(''), trashBusy=ref(false)
 const purgeOpen=ref(false), purgeId=ref<string|null>(null)
+const panelOrder=computed(()=>launcherOrder(store.settings.client))
+async function movePanelSection(id:string,delta:number){const order=[...panelOrder.value],index=order.indexOf(id),next=index+delta;if(next<0||next>=order.length)return;[order[index],order[next]]=[order[next]!,order[index]!];try{await store.saveClient('lumo-launcher-order',order)}catch(e){store.notify(String(e))}}
+const sizePresets=[{id:'default',label:'默认 · 1040 × 720'},{id:'640x480',label:'紧凑 · 640 × 480'},{id:'800x560',label:'标准 · 800 × 560'},{id:'1040x720',label:'宽敞 · 1040 × 720'},{id:'custom',label:'自定义'}]
+const sizeChoice=ref('default'), panelWidth=ref<number|string>(1040), panelHeight=ref<number|string>(720), sizeError=ref('')
+watch(()=>[store.settings.launcher.window_width,store.settings.launcher.window_height],([width,height])=>{
+  panelWidth.value=width??1040;panelHeight.value=height??720
+  sizeChoice.value=width&&height?(sizePresets.some(item=>item.id===`${width}x${height}`)?`${width}x${height}`:'custom'):'default'
+},{immediate:true})
+async function savePanelSize(){
+  const width=Number(panelWidth.value),height=Number(panelHeight.value)
+  if(sizeChoice.value!=='default'&&(!Number.isInteger(width)||width<480||width>3840||!Number.isInteger(height)||height<320||height>2160)){sizeError.value='宽度请输入 480–3840 的整数，高度请输入 320–2160 的整数';return}
+  saving.value=true;sizeError.value=''
+  try{await store.setSetting('launcher',{...store.settings.launcher,window_width:sizeChoice.value==='default'?null:width,window_height:sizeChoice.value==='default'?null:height});store.notify('窗口尺寸已保存，下次打开面板时生效')}
+  catch(e){sizeError.value=String(e)}finally{saving.value=false}
+}
+function choosePanelSize(value:unknown){sizeChoice.value=String(value);sizeError.value='';if(sizeChoice.value==='custom')return;if(sizeChoice.value!=='default'){const [width,height]=sizeChoice.value.split('x').map(Number);panelWidth.value=width!;panelHeight.value=height!}void savePanelSize()}
 const kindNames={note:'笔记',sticky:'便签',countdown:'倒数日'}
 watch(()=>store.settings.launcher.shortcut,value=>shortcut.value=value)
 watch(()=>store.settings,()=>void refresh())
@@ -26,7 +43,7 @@ async function desktopOption(key:'close_to_tray'|'autostart',value:boolean){try{
 async function refresh(){try{const [s,t,e]=await Promise.all([api.autoBackupStatus(),api.listTrash(),api.launcherStatus()]);status.value=s;trash.value=t;shortcutError.value=e??'';error.value=''}catch(e){error.value=String(e)}finally{loading.value=false}}
 onMounted(()=>{void refresh();timer=setInterval(refresh,30000)})
 onUnmounted(()=>clearInterval(timer))
-async function configure(enabled=store.settings.launcher.enabled,minimalMode=store.settings.launcher.minimal_mode){saving.value=true;try{store.settings=await api.configureLauncher({enabled,shortcut:shortcut.value.trim(),minimal_mode:minimalMode});shortcutError.value='';store.notify('快捷启动设置已保存')}catch(e){shortcutError.value=String(e)}finally{saving.value=false}}
+async function configure(enabled=store.settings.launcher.enabled,minimalMode=store.settings.launcher.minimal_mode){saving.value=true;try{store.settings=await api.configureLauncher({...store.settings.launcher,enabled,shortcut:shortcut.value.trim(),minimal_mode:minimalMode});shortcutError.value='';store.notify('快捷启动设置已保存')}catch(e){shortcutError.value=String(e)}finally{saving.value=false}}
 async function backupOptions(value:Partial<typeof store.settings.auto_backup>){try{await store.setSetting('auto_backup',{...store.settings.auto_backup,...value});await refresh()}catch{}}
 async function backupNow(){backupBusy.value=true;try{await store.flushPendingSaves();await api.runAutoBackup();await refresh();store.notify('自动备份已创建')}catch(e){store.notify(String(e))}finally{backupBusy.value=false}}
 async function testNotification(){notificationBusy.value=true;notificationStatus.value='';try{await api.testReminderNotification();notificationStatus.value='测试通知已发送，请确认 Windows 通知中心能看到它。'}catch(e){notificationStatus.value=String(e)}finally{notificationBusy.value=false}}
@@ -42,6 +59,10 @@ function date(value:string|null){return value?new Date(value).toLocaleString('zh
     <Field><FieldLabel for="reminder-hour">日期提醒时间</FieldLabel><Select :model-value="String(store.settings.product.reminder_hour)" @update:model-value="value=>store.setSetting('product',{...store.settings.product,reminder_hour:Number(value)}).catch(e=>store.notify(String(e)))"><SelectTrigger id="reminder-hour" class="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="hour in 24" :key="hour" :value="String(hour-1)">{{ String(hour-1).padStart(2,'0') }}:00</SelectItem></SelectGroup></SelectContent></Select><FieldDescription>按本机时区（{{ Intl.DateTimeFormat().resolvedOptions().timeZone||'本地时间' }}）检查。需要应用运行或留在托盘；关机期间无法提醒，重新启动后会补发最近错过的一天。</FieldDescription><div class="flex flex-wrap items-center gap-3"><Button variant="outline" :disabled="notificationBusy" @click="testNotification">{{ notificationBusy?'正在发送…':'发送测试通知' }}</Button><p v-if="notificationStatus" role="status" class="text-sm" :class="notificationStatus.includes('不可用')?'text-destructive':'text-muted-foreground'">{{ notificationStatus }}</p></div></Field>
     <Field orientation="horizontal"><FieldLabel for="launcher-enabled">启用全局快捷键</FieldLabel><Switch id="launcher-enabled" :model-value="store.settings.launcher.enabled" :disabled="saving" @update:model-value="configure"/></Field>
       <Field orientation="horizontal"><div><FieldLabel for="minimal-mode">极简模式</FieldLabel><FieldDescription>启动程序时直接显示搜索、最近内容和应用网格；点击主界面图标进入完整工作台。</FieldDescription></div><Switch id="minimal-mode" :model-value="store.settings.launcher.minimal_mode" :disabled="saving" @update:model-value="value=>configure(store.settings.launcher.enabled,value)"/></Field>
+      <Field><FieldLabel>快捷启动面板顺序</FieldLabel><div class="flex max-w-lg flex-col gap-2"><div v-for="(id,index) in panelOrder" :key="id" class="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2"><span class="flex-1 text-sm">{{ launcherSections.find(item=>item.id===id)?.label }}</span><Button variant="ghost" size="sm" :disabled="index===0" :aria-label="`上移${launcherSections.find(item=>item.id===id)?.label}`" @click="movePanelSection(id,-1)">上移</Button><Button variant="ghost" size="sm" :disabled="index===panelOrder.length-1" :aria-label="`下移${launcherSections.find(item=>item.id===id)?.label}`" @click="movePanelSection(id,1)">下移</Button></div></div><FieldDescription>默认：最近使用 → 固定项 → 系统启动项 → 全部应用。已固定的自定义分组始终显示在全部应用上方。</FieldDescription></Field>
+      <Field><FieldLabel for="launcher-size">快捷启动窗口大小</FieldLabel><Select :model-value="sizeChoice" :disabled="saving" @update:model-value="choosePanelSize"><SelectTrigger id="launcher-size" class="w-full max-w-sm"><SelectValue/></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="preset in sizePresets" :key="preset.id" :value="preset.id">{{ preset.label }}</SelectItem></SelectGroup></SelectContent></Select><FieldDescription>单位为逻辑像素，适用于普通和极简模式；超出屏幕可用区域时自动缩小。默认尺寸为 1040 × 720。</FieldDescription></Field>
+      <FieldGroup v-if="sizeChoice==='custom'" class="max-w-lg"><Field><FieldLabel for="launcher-width">宽度</FieldLabel><Input id="launcher-width" v-model="panelWidth" type="number" min="480" max="3840" step="1" :aria-invalid="!!sizeError" @keydown.enter="savePanelSize"/></Field><Field><FieldLabel for="launcher-height">高度</FieldLabel><Input id="launcher-height" v-model="panelHeight" type="number" min="320" max="2160" step="1" :aria-invalid="!!sizeError" @keydown.enter="savePanelSize"/></Field><div><Button :disabled="saving" @click="savePanelSize">保存窗口尺寸</Button></div></FieldGroup>
+      <p v-if="sizeError" class="text-sm text-destructive" role="alert">{{ sizeError }}</p>
       <Field><FieldLabel for="launcher-shortcut">快捷键</FieldLabel><div class="flex max-w-lg gap-2"><Input id="launcher-shortcut" v-model="shortcut" placeholder="Alt+Space" @keydown.enter="configure()"/><Button :disabled="saving" @click="configure()">保存</Button><Button variant="outline" @click="api.showLauncher().catch(e=>store.notify(String(e)))">预览面板</Button></div><FieldDescription>例如 Alt+Space、Control+Alt+Space。面板支持 ↑ ↓、Enter 和 Esc。</FieldDescription></Field>
       <p v-if="shortcutError" class="text-sm text-destructive" role="alert">{{ shortcutError }}</p>
     </FieldGroup>

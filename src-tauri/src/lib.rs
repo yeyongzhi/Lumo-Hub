@@ -129,6 +129,7 @@ pub fn run() {
             commands::set_setting,
             commands::complete_welcome,
             commands::list_notes,
+            commands::note_file_issues,
             commands::create_note,
             commands::update_note,
             commands::delete_note,

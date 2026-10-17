@@ -1,11 +1,14 @@
-version: 0.0.1-beta.0
-tag: v0.0.1-beta.0
-title: Lumo-Hub 0.0.1-beta.0
-release_date: 2026-10-16
+version: 0.0.1-beta.1
+tag: v0.0.1-beta.1
+title: Lumo-Hub 0.0.1-beta.1（测试版）
+release_date: 2026-10-17
 prerelease: true
 notes: |
-  Lumo-Hub 首个 Beta 版本。
+  发布日期：2026-10-17
 
-  - 本地优先的桌面效率工作台，包含应用库、快捷启动、笔记、便签、倒数日、备份恢复和系统托盘。
-  - Windows x64 NSIS 安装包可用于手动安装。
-  - 应用内更新签名附件暂不可用；发布机尚未配置与内置公钥匹配的 Tauri updater 私钥。Beta 请通过安装包手动安装。
+  - ✨️ 快捷启动新增任务管理器和 Windows 设置，并支持回车启动、分组固定及面板快捷操作。
+  - 🎨 优化应用库分组、排序和快捷启动面板布局，支持亮色与暗色主题。
+  - 🐛 提升笔记文件异常处理和回收站恢复可靠性，避免异常文件影响已有数据。
+  - 🔧 改进本地设置迁移与系统工具兼容性。
+
+  测试版，请先备份重要文档；遇到问题请通过 GitHub Issues 反馈。

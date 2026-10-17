@@ -3,13 +3,13 @@ use tauri::{Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
-    let minimal = app
+    let launcher = app
         .state::<AppState>()
         .settings
         .lock()
         .map_err(|_| "设置不可用")?
-        .launcher
-        .minimal_mode;
+        .launcher.clone();
+    let minimal = launcher.minimal_mode;
     let window = match app.get_webview_window("quick-launch") {
         Some(window) => window,
         None => tauri::WebviewWindowBuilder::new(
@@ -24,7 +24,7 @@ pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
                 .join("quick-launch-webview"),
         )
         .title("Lumo 快捷启动")
-        .inner_size(800.0, 560.0)
+        .inner_size(1040.0, 720.0)
         .resizable(false)
         .decorations(false)
         .devtools(false)
@@ -35,12 +35,18 @@ pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| format!("无法打开快捷面板：{e}"))?,
     };
-    window
-        .set_size(tauri::LogicalSize::new(
-            if minimal { 1040.0 } else { 800.0 },
-            if minimal { 720.0 } else { 560.0 },
-        ))
-        .map_err(|e| e.to_string())?;
+    let mut width = launcher.window_width.unwrap_or(1040) as f64;
+    let mut height = launcher.window_height.unwrap_or(720) as f64;
+    width = width.clamp(480.0, 3840.0);
+    height = height.clamp(320.0, 2160.0);
+    if let Some(monitor) = app.get_webview_window("main")
+        .and_then(|main| main.current_monitor().ok().flatten())
+        .or_else(|| window.current_monitor().ok().flatten()) {
+        let area = monitor.work_area();
+        width = width.min(area.size.width as f64 / monitor.scale_factor());
+        height = height.min(area.size.height as f64 / monitor.scale_factor());
+    }
+    window.set_size(tauri::LogicalSize::new(width, height)).map_err(|e| e.to_string())?;
     window
         .set_skip_taskbar(!minimal)
         .map_err(|e| e.to_string())?;
@@ -139,6 +145,12 @@ pub async fn configure_launcher(
     value: LauncherSettings,
 ) -> Result<crate::models::AppSettings, String> {
     let _op = state.data_operation.lock().map_err(|_| "数据操作不可用")?;
+    match (value.window_width, value.window_height) {
+        (None, None) => {},
+        (Some(w), Some(h)) if (480..=3840).contains(&w) && (320..=2160).contains(&h) => {},
+        _ => return Err("窗口宽度须为 480–3840，高度须为 320–2160，且必须同时设置".into()),
+    }
+
     let shortcut: Shortcut = value
         .shortcut
         .parse()

@@ -1,5 +1,5 @@
 use crate::{note_files, AppState};
-use tauri::State;
+use tauri::{Emitter, State};
 #[tauri::command]
 pub fn read_local(
     state: State<'_, AppState>,
@@ -40,6 +40,7 @@ pub fn read_local(
 }
 #[tauri::command]
 pub fn write_local(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     key: String,
     value: serde_json::Value,
@@ -66,10 +67,13 @@ pub fn write_local(
     }
     let mut settings = state.settings.lock().map_err(|_| "设置不可用")?;
     let previous = settings.clone();
+    let pinned_group_changed = key.starts_with("lumo-launcher-");
     settings.client.insert(key, value);
     if let Err(e) = crate::storage::save_settings(&root, &settings) {
         *settings = previous;
         return Err(e);
     }
+    drop(settings);
+    if pinned_group_changed { let _ = app.emit("lumo-settings-changed", ()); }
     Ok(())
 }

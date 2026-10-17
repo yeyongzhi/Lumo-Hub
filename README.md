@@ -1,6 +1,6 @@
 # Lumo-Hub
 
-Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台，使用 Tauri 2、Rust、Vue 3、TypeScript、Tailwind CSS 和 shadcn-vue。当前准备发布版本为 **0.0.1-beta.0**（Beta 0）。
+Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台，使用 Tauri 2、Rust、Vue 3、TypeScript、Tailwind CSS 和 shadcn-vue。当前准备发布版本为 **0.0.1-beta.1**（Beta 1）。
 
 ## 功能
 
@@ -61,7 +61,7 @@ pnpm run docs:build
 
 ## 数据与故障排查
 
-详见[数据存储说明](./数据存储说明.md)、[开发说明书](./开发说明书.md)和[技术方案](./技术方案.md)。启动异常日志位于 `%LOCALAPPDATA%\Lumo-Hub\startup-error.log`；也可查看 Windows 事件查看器中的应用程序错误。
+数据目录与数据格式见[开发说明书](./开发说明书.md)和[技术方案](./技术方案.md)。启动异常日志位于 `%LOCALAPPDATA%\Lumo-Hub\startup-error.log`；也可查看 Windows 事件查看器中的应用程序错误。
 
 ## 文档站
 

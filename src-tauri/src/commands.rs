@@ -242,6 +242,18 @@ pub fn set_setting(
     let mut settings = state.settings.lock().map_err(|_| "设置状态不可用")?;
     let previous = settings.clone();
     match key.as_str() {
+        "launcher" => {
+            let options: crate::models::LauncherSettings = serde_json::from_value(value).map_err(|_| "快捷启动尺寸无效")?;
+            if options.enabled != settings.launcher.enabled || options.shortcut != settings.launcher.shortcut || options.minimal_mode != settings.launcher.minimal_mode {
+                return Err("快捷键和启动模式请通过快捷启动配置保存".into());
+            }
+            match (options.window_width, options.window_height) {
+                (None, None) => {},
+                (Some(w), Some(h)) if (480..=3840).contains(&w) && (320..=2160).contains(&h) => {},
+                _ => return Err("窗口宽度须为 480–3840，高度须为 320–2160".into()),
+            }
+            settings.launcher = options;
+        }
         "product" => {
             let options: ProductSettings=serde_json::from_value(value).map_err(|_|"偏好设置无效")?;
             if options.reminder_hour>23 || options.reminders.len()>10000 || options.reminders.values().any(|days|days.len()>3||days.iter().any(|day|![0,1,7].contains(day))) || options.note_tags.values().any(|tags|tags.len()>20||tags.iter().any(|tag|tag.len()>120)) {return Err("提醒或标签设置无效".into())}
@@ -341,6 +353,11 @@ pub fn complete_welcome(state: State<'_, AppState>) -> Result<AppSettings, Strin
 #[tauri::command]
 pub fn list_notes(state: State<'_, AppState>) -> Result<Vec<Note>, String> { let root=data_root(&state)?;crate::note_files::load_tags(&root,&mut *state.settings.lock().map_err(|_|"设置不可用")?)?;return Ok(crate::note_files::list(&root)?.into_iter().map(|(n,_)|n).collect());}
 #[tauri::command]
+pub fn note_file_issues(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let root = data_root(&state)?;
+    Ok(crate::note_files::inspect(&root)?.1)
+}
+#[tauri::command]
 pub fn create_note(state: State<'_, AppState>, title: String, content: Option<String>) -> Result<Note, String> {
     let _operation = state
         .data_operation
@@ -359,11 +376,19 @@ pub fn create_note(state: State<'_, AppState>, title: String, content: Option<St
         created_at: now.clone(),
         updated_at: now,
     };
-    crate::note_files::write(&data_root(&state)?,&note,vec![])?;
-    sql(db.execute(
+    let root = data_root(&state)?;
+    crate::note_files::write(&root, &note, vec![])?;
+    if let Err(error) = sql(db.execute(
         "INSERT INTO notes(id,title,content,created_at,updated_at) VALUES(?1,?2,?3,?4,?4)",
         params![note.id, note.title, note.content, note.created_at],
-    ))?;
+    )) {
+        if let Ok(path) = crate::note_files::find_path(&root, &note.id) {
+            if let Err(rollback) = std::fs::remove_file(&path) {
+                return Err(format!("{error}；新建的笔记文件仍保留在 {}：{rollback}", path.display()));
+            }
+        }
+        return Err(error);
+    }
     Ok(note)
 }
 
@@ -379,12 +404,29 @@ pub fn update_note(
         .lock()
         .map_err(|_| "数据操作状态不可用")?;
     let mut db = state.db.lock().map_err(|_| "数据库不可用")?;
-    let root=data_root(&state)?;crate::note_files::sync(&root,&mut db)?;let (mut note,tags)=crate::note_files::list(&root)?.into_iter().find(|(n,_)|n.id==id).ok_or("找不到笔记")?;note.title=title.clone();note.content=content.clone();note.updated_at=db::timestamp();crate::note_files::write(&root,&note,tags)?;
-    let changed = sql(db.execute(
+    let root = data_root(&state)?;
+    crate::note_files::sync(&root, &mut db)?;
+    let (mut note, tags) = crate::note_files::list(&root)?.into_iter().find(|(n, _)| n.id == id).ok_or("找不到笔记")?;
+    let original = note.clone();
+    let updated_at = db::timestamp();
+    note.title = title.clone();
+    note.content = content.clone();
+    note.updated_at = updated_at.clone();
+    crate::note_files::write(&root, &note, tags.clone())?;
+    let changed = match sql(db.execute(
         "UPDATE notes SET title=?1,content=?2,updated_at=?3 WHERE id=?4",
-        params![title, content, db::timestamp(), id],
-    ))?;
+        params![title, content, updated_at, id],
+    )) {
+        Ok(changed) => changed,
+        Err(error) => {
+            if let Err(rollback) = crate::note_files::write(&root, &original, tags) {
+                return Err(format!("{error}；恢复旧笔记内容失败：{rollback}"));
+            }
+            return Err(error);
+        }
+    };
     if changed == 0 {
+        crate::note_files::write(&root, &original, tags)?;
         return Err("找不到这篇笔记，可能已被删除。".into());
     }
     Ok(())
@@ -394,7 +436,9 @@ pub fn update_note(
 pub fn delete_note(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let _operation = state.data_operation.lock().map_err(|_| "数据操作状态不可用")?;
     let mut conn = state.db.lock().map_err(|_| "数据库不可用")?;
-    let root=data_root(&state)?;crate::note_files::sync(&root,&mut conn)?;let path=crate::note_files::find_path(&root,&id)?;let tags=crate::note_files::list(&root)?.into_iter().find(|(n,_)|n.id==id).map(|(_,tags)|tags).unwrap_or_default();crate::recycle::trash(&mut conn,"note",&id)?;conn.execute("UPDATE recycle_bin SET payload=json_set(payload,'$.tags',json(?1)) WHERE kind='note' AND json_extract(payload,'$.id')=?2",params![serde_json::to_string(&tags).map_err(|e|e.to_string())?,id]).map_err(|e|e.to_string())?;std::fs::remove_file(path).map_err(|e|e.to_string())
+    let root = data_root(&state)?;
+    crate::note_files::sync(&root, &mut conn)?;
+    crate::recycle::trash_note(&mut conn, &root, &id)
 }
 
 #[tauri::command]
@@ -1197,6 +1241,8 @@ fn common_launcher_target(id: &str) -> Result<(&'static str, &'static [&'static 
         "control_panel" => Ok(("System32/control.exe", &[], false)),
         "notepad" => Ok(("System32/notepad.exe", &[], false)),
         "calculator" => Ok(("System32/calc.exe", &[], false)),
+        "task_manager" => Ok(("System32/taskmgr.exe", &[], false)),
+        "windows_settings" => Ok(("explorer.exe", &["ms-settings:"], false)),
         _ => Err("不支持的常用启动项".into()),
     }
 }
@@ -1211,6 +1257,8 @@ pub fn common_launcher_icons() -> Result<std::collections::HashMap<String, Strin
             PathBuf::from(args[0])
         } else if *id == "control_panel" {
             PathBuf::from("shell:ControlPanelFolder")
+        } else if *id == "windows_settings" {
+            PathBuf::from(&windows).join("ImmersiveControlPanel/SystemSettings.exe")
         } else { PathBuf::from(&windows).join(relative) };
         if let Some(bytes) = crate::app_icon::extract_icon_png(&target) {
             icons.insert((*id).to_string(), crate::app_icon::data_url(&bytes));

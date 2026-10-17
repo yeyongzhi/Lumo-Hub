@@ -36,8 +36,15 @@ impl Default for ProductSettings {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct HomeWidget { pub id: String, pub kind: String, pub size: String, #[serde(default)] pub selected_ids: Vec<String> }
 
-pub const COMMON_LAUNCHER_IDS: &[&str] = &["computer", "recycle_bin", "explorer", "cmd", "powershell", "control_panel", "notepad", "calculator"];
+pub const COMMON_LAUNCHER_IDS: &[&str] = &["computer", "recycle_bin", "explorer", "cmd", "powershell", "control_panel", "notepad", "calculator", "task_manager", "windows_settings"];
 fn default_common_launchers() -> Vec<String> { COMMON_LAUNCHER_IDS.iter().map(|id| (*id).to_string()).collect() }
+
+pub fn migrate_common_launchers(settings: &mut AppSettings) {
+    const PREVIOUS_DEFAULTS: &[&str] = &["computer", "recycle_bin", "explorer", "cmd", "powershell", "control_panel", "notepad", "calculator"];
+    if settings.common_launchers.iter().map(String::as_str).eq(PREVIOUS_DEFAULTS.iter().copied()) {
+        settings.common_launchers = default_common_launchers();
+    }
+}
 
 fn default_sidebar_width() -> u16 { 240 }
 
@@ -88,6 +95,17 @@ mod layout_tests {
             let restored: AppSettings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
             assert_eq!(restored.common_launchers, ids);
         }
+    }
+
+    #[test]
+    fn new_common_launchers_extend_previous_default_selection() {
+        let mut settings: AppSettings = serde_json::from_str(r#"{"theme_mode":"dark","accent":"blue","font_size":14,"welcome_completed":true,"common_launchers":["computer","recycle_bin","explorer","cmd","powershell","control_panel","notepad","calculator"]}"#).unwrap();
+        migrate_common_launchers(&mut settings);
+        assert!(settings.common_launchers.contains(&"task_manager".to_string()));
+        assert!(settings.common_launchers.contains(&"windows_settings".to_string()));
+        let mut customized = AppSettings { common_launchers: vec!["cmd".into()], ..AppSettings::default() };
+        migrate_common_launchers(&mut customized);
+        assert_eq!(customized.common_launchers, vec!["cmd"]);
     }
 
     #[test]
@@ -209,8 +227,8 @@ pub struct SearchResult {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct LauncherSettings { pub enabled: bool, pub shortcut: String, #[serde(default)] pub minimal_mode: bool }
-impl Default for LauncherSettings { fn default() -> Self { Self { enabled: true, shortcut: "Alt+Space".into(), minimal_mode: false } } }
+pub struct LauncherSettings { pub enabled: bool, pub shortcut: String, #[serde(default)] pub minimal_mode: bool, #[serde(default)] pub window_width: Option<u32>, #[serde(default)] pub window_height: Option<u32> }
+impl Default for LauncherSettings { fn default() -> Self { Self { enabled: true, shortcut: "Alt+Space".into(), minimal_mode: false, window_width: None, window_height: None } } }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AutoBackupSettings { pub enabled: bool, pub interval_hours: u32, pub retain: usize }
 impl Default for AutoBackupSettings { fn default() -> Self { Self { enabled: true, interval_hours: 24, retain: 7 } } }
