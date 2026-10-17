@@ -65,4 +65,4 @@ pnpm run docs:build
 
 ## 文档站
 
-文档使用 VitePress，GitHub Actions 会在 `main` 分支部署到 [GitHub Pages](https://yeyongzhi.github.io/Lumo-Hub/)。文档部署与 Windows 应用安装包发布相互独立。
+文档使用 VitePress，GitHub Actions 会在 `dev` 分支部署到 [GitHub Pages](https://yeyongzhi.github.io/Lumo-Hub/)。文档部署与 Windows 应用安装包发布相互独立。
