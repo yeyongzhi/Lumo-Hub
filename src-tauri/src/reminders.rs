@@ -1,10 +1,14 @@
 use crate::AppState;
 use chrono::{Datelike,NaiveDate,Local,Duration};
 use tauri::{Manager,Emitter};
-use tauri_plugin_notification::NotificationExt;
 #[tauri::command]
-pub fn test_notification(app:tauri::AppHandle)->Result<(),String>{
-    app.notification().builder().title("Lumo · 通知测试").body("系统通知可正常显示；倒数日提醒会按设置时间发送。").show().map_err(|e|format!("系统通知不可用：{e}；请在 Windows 设置中允许 Lumo-Hub 通知。"))
+pub async fn test_notification(app:tauri::AppHandle)->Result<String,String>{
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::notifications::send(&app,"Lumo · 通知测试","这是一条测试通知；倒数日提醒会按设置时间发送。")
+            .map_err(|e|format!("系统通知不可用：{e}"))?;
+        let message=if cfg!(debug_assertions){"测试请求已提交给 Windows。开发预览的通知可能显示为 PowerShell；未弹出时请检查通知设置、横幅及勿扰模式。"}else{"测试请求已提交给 Windows。未弹出时请检查通知设置、横幅及勿扰模式，也可按 Win + N 查看通知中心。"};
+        Ok(message.to_string())
+    }).await.map_err(|e|format!("通知任务失败：{e}"))?
 }
 fn annual_date(date:NaiveDate,year:i32)->NaiveDate{
     NaiveDate::from_ymd_opt(year,date.month(),date.day()).unwrap_or_else(||NaiveDate::from_ymd_opt(year,2,28).unwrap())
@@ -45,7 +49,7 @@ fn check(app:&tauri::AppHandle)->Result<(),String>{
         if sent{continue}
         let days=(target-today).num_days();
         let message=if days==0{format!("{title} · 就是今天")}else if days>0{format!("{title} · 还有 {days} 天")}else{format!("补发提醒：{title} · 昨天到期")};
-        app.notification().builder().title("Lumo · 日期提醒").body(&message).show().map_err(|e|e.to_string())?;
+        crate::notifications::send(app,"Lumo · 日期提醒",&message)?;
         db.execute("INSERT INTO reminder_deliveries(key,delivered_at) VALUES(?1,?2)",rusqlite::params![key,now.to_rfc3339()]).map_err(|e|e.to_string())?;
         let _=app.emit("lumo-reminder",&message);
     }

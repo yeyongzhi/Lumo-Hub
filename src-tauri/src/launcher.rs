@@ -80,6 +80,9 @@ pub async fn show_launcher(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_startup_view(app: tauri::AppHandle) -> Result<(), String> {
+    let shortcut_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || sync_inner(&shortcut_app))
+        .await.map_err(|e| format!("快捷键初始化失败：{e}"))?;
     let state = app.state::<AppState>();
     let minimal = {
         let settings = state.settings.lock().map_err(|_| "设置不可用")?;
@@ -203,6 +206,8 @@ pub fn sync(app: &tauri::AppHandle) {
 
 fn sync_inner(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
+    // Serialize startup / data-directory synchronization with manual saves.
+    let Ok(_operation) = state.data_operation.lock() else { return };
     let settings = match state.settings.lock() {
         Ok(s) => s.launcher.clone(),
         Err(_) => return,
@@ -213,11 +218,32 @@ fn sync_inner(app: &tauri::AppHandle) {
         app.global_shortcut()
             .register(settings.shortcut.as_str())
             .err()
-            .map(|e| format!("快捷键注册失败：{e}。请在设置中更换组合键。"))
+            .map(|e| format!("快捷键 {} 注册失败，可能与其他软件冲突：{e}。请修改组合键后点击保存。", settings.shortcut))
     } else {
         None
     };
     if let Ok(mut status) = state.shortcut_error.lock() {
-        *status = error;
+        *status = error.clone();
     };
+    let _ = app.emit("lumo-shortcut-status", error);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_shortcut_is_enabled_and_legacy_fields_are_preserved() {
+        let defaults = LauncherSettings::default();
+        assert!(defaults.enabled);
+        assert_eq!(defaults.shortcut, "Alt+Space");
+        assert!(defaults.shortcut.parse::<Shortcut>().is_ok());
+        let legacy: LauncherSettings = serde_json::from_str(r#"{"minimal_mode":true}"#).unwrap();
+        assert!(legacy.enabled);
+        assert!(legacy.minimal_mode);
+        assert_eq!(legacy.shortcut, "Alt+Space");
+        let custom: LauncherSettings = serde_json::from_str(r#"{"enabled":false,"shortcut":"Control+Alt+Space"}"#).unwrap();
+        assert!(!custom.enabled);
+        assert_eq!(custom.shortcut, "Control+Alt+Space");
+    }
 }

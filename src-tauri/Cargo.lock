@@ -2286,10 +2286,13 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs 6.0.0",
+ "notify-rust",
  "pinyin",
  "png 0.18.1",
+ "quick-xml",
  "reqwest",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -3073,6 +3076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]

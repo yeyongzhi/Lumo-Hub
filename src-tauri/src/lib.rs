@@ -3,7 +3,9 @@ mod local_files;
 mod note_files;
 mod desktop;
 mod reminders;
+mod notifications;
 mod home_feeds;
+mod updates;
 mod backup;
 mod search;
 mod recycle;
@@ -103,7 +105,6 @@ pub fn run() {
             });
             desktop::setup(app.handle()).map_err(std::io::Error::other)?;
             reminders::start(app.handle().clone());
-            launcher::sync(app.handle());
             automatic_backup::start(app.handle().clone());
             Ok(())
         })
@@ -118,7 +119,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             local_files::read_local,local_files::write_local,desktop::close_main, desktop::export_markdown,
-            search::search_resources,
+            search::search_resources, updates::check_app_update,
             recycle::list_trash, recycle::restore_trash, recycle::purge_trash,
             launcher::show_launcher, launcher::hide_launcher, launcher::open_startup_view, launcher::open_main_page, launcher::configure_launcher, launcher::launcher_status,
             automatic_backup::run_auto_backup, automatic_backup::auto_backup_status,
@@ -138,7 +139,7 @@ pub fn run() {
             commands::update_sticky,
             commands::delete_sticky,
             commands::list_countdowns,
-            reminders::test_notification,
+            reminders::test_notification, notifications::open_notification_settings,
             commands::create_countdown,
             commands::update_countdown,
             commands::delete_countdown,

@@ -227,7 +227,9 @@ pub struct SearchResult {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct LauncherSettings { pub enabled: bool, pub shortcut: String, #[serde(default)] pub minimal_mode: bool, #[serde(default)] pub window_width: Option<u32>, #[serde(default)] pub window_height: Option<u32> }
+pub struct LauncherSettings { #[serde(default = "launcher_enabled_default")] pub enabled: bool, #[serde(default = "launcher_shortcut_default")] pub shortcut: String, #[serde(default)] pub minimal_mode: bool, #[serde(default)] pub window_width: Option<u32>, #[serde(default)] pub window_height: Option<u32> }
+fn launcher_enabled_default() -> bool { true }
+fn launcher_shortcut_default() -> String { "Alt+Space".into() }
 impl Default for LauncherSettings { fn default() -> Self { Self { enabled: true, shortcut: "Alt+Space".into(), minimal_mode: false, window_width: None, window_height: None } } }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AutoBackupSettings { pub enabled: bool, pub interval_hours: u32, pub retain: usize }
