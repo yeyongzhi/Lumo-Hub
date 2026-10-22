@@ -14,6 +14,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '产品功能', link: '/guide' },
+      { text: '安装说明', link: '/install' },
       { text: '更新日志', link: '/changelog' },
       { text: '开发文档', items: [
         { text: '开发说明书', link: '/开发说明书' },
@@ -24,6 +25,7 @@ export default defineConfig({
     sidebar: [
       { text: '产品', items: [
         { text: '产品功能', link: '/guide' },
+      { text: '安装说明', link: '/install' },
         { text: '更新日志', link: '/changelog' }
       ] },
       { text: '开发文档', items: [

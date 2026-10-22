@@ -42,7 +42,7 @@ try {
     const listeners = new Map()
     let callbackId = 0
     window.isTauri = true
-    window.__fixture = { launched: [], launchedCommon: [], openedMain: [], resources, settings,
+    window.__fixture = { launched: [], launchedCommon: [], openedTools: [], openedMain: [], resources, settings,
       emit: event => { for(const id of listeners.get(event)||[]) callbacks.get(id)?.({event,payload:null}) }
     }
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} }
@@ -68,6 +68,7 @@ try {
         if (command === 'common_launcher_icons') return {}
         if (command === 'search_all') return []
         if (command === 'launch_resource') { window.__fixture.launched.push(args.id); return new Date().toISOString() }
+        if (command === 'open_builtin_tool') { window.__fixture.openedTools.push(args.id); return null }
         if (command === 'launch_common') { window.__fixture.launchedCommon.push(args.id); return null }
         if (command === 'open_main_page') { window.__fixture.openedMain.push(args.page); return null }
         if (command === 'hide_launcher' || command.startsWith('plugin:') || command === 'open_startup_view') return null
@@ -112,7 +113,7 @@ try {
   await page.waitForFunction(() => window.__fixture.launched.length === 2)
   assert.deepEqual(await page.evaluate(() => window.__fixture.launched), [selectedResourceId, 'app-2'], 'Enter on a focused tile should launch the highlighted app exactly once')
   const grids=await page.locator('[data-launch-grid]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('data-launch-grid')))
-  assert.deepEqual(grids,['recent','pinned','common','group','resource'])
+  assert.deepEqual(grids,['recent','pinned','common','group','tools','resource'])
   const commonGrid=page.locator('[data-launch-grid="common"]')
   await commonGrid.getByRole('option', { name: '任务管理器' }).waitFor()
   await commonGrid.getByRole('option', { name: '设置' }).waitFor()
@@ -128,7 +129,7 @@ try {
   await page.evaluate(()=>{window.__fixture.settings.client['lumo-launcher-order']=['pinned','common','recent','resource'];window.__fixture.emit('lumo-settings-changed')})
   await page.waitForFunction(()=>document.querySelector('[data-launch-grid]')?.getAttribute('data-launch-grid')==='pinned')
   const ordered=await page.locator('[data-launch-grid]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('data-launch-grid')))
-  assert.deepEqual(ordered,['pinned','common','recent','group','resource'])
+  assert.deepEqual(ordered,['pinned','common','recent','group','tools','resource'])
   for(const mode of ['dark','light']){
     await page.evaluate(mode=>{window.__fixture.settings.theme_mode=mode;window.__fixture.emit('lumo-settings-changed')},mode)
     await page.waitForFunction(mode=>document.documentElement.dataset.theme===mode,mode)
@@ -140,6 +141,14 @@ try {
   await page.evaluate(()=>{window.__fixture.settings.client['lumo-launcher-fixed-items']=[];window.__fixture.emit('lumo-settings-changed')})
   await page.waitForFunction(()=>!document.querySelector('[data-launch-grid="pinned"]'))
   assert.equal(await page.getByText('固定项 · 0').count(), 0, 'the pinned section should disappear when it has no items')
+  assert.equal(await page.locator('[data-launch-grid="tools"] [role="option"]').count(), 6)
+  for (const [query,id] of [['color picker','color'],['colorPicker','color'],['clipboard','clipboard'],['qrcode','qrcode'],['JSON','text'],['悬浮','floating'],['timestamp','timestamp']]) {
+    await search.fill(query)
+    await page.locator(`#quick-result-tool\\:${id}`).waitFor()
+    await search.press('Enter')
+    await page.waitForFunction(id=>window.__fixture.openedTools.includes(id),id)
+  }
+  await search.fill('')
   await page.getByRole('button', { name: '关闭快捷启动' }).focus()
   await page.keyboard.press('Enter')
   assert.deepEqual(errors, [])

@@ -1,3 +1,4 @@
+mod builtin_tools;
 mod library_tools;
 mod local_files;
 mod note_files;
@@ -103,6 +104,7 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 shortcut_error: Mutex::new(None), backup_error: Mutex::new(None),
             });
+            builtin_tools::start(app.handle().clone());
             desktop::setup(app.handle()).map_err(std::io::Error::other)?;
             reminders::start(app.handle().clone());
             automatic_backup::start(app.handle().clone());
@@ -118,6 +120,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            builtin_tools::save_tool_png, builtin_tools::open_builtin_tool, builtin_tools::clipboard_history, builtin_tools::clipboard_pause, builtin_tools::clipboard_delete, builtin_tools::clipboard_copy,
             local_files::read_local,local_files::write_local,desktop::close_main, desktop::export_markdown,
             search::search_resources, updates::check_app_update,
             recycle::list_trash, recycle::restore_trash, recycle::purge_trash,

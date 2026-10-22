@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openTool } from '@/lib/tools'
 import QuickCapture from '@/components/QuickCapture.vue'
 import SearchHighlight from '@/components/SearchHighlight.vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -78,7 +79,7 @@ watch(search, value=>{
 })
 
 async function navigate(value:PageId){try{await store.flushPendingSaves()}catch{store.notify('内容尚未保存，请检查保存状态后重试');return false}page.value=value;searchOpen.value=false;return true}
-async function openResult(result:SearchResult){try{await store.flushPendingSaves()}catch{store.notify('内容尚未保存，请检查后重试');return}store.searchTarget={kind:result.kind,id:result.id};page.value=result.kind==='note'?'notes':result.kind==='sticky'?'stickies':result.kind==='countdown'?'countdowns':'library';searchOpen.value=false;search.value=''}
+async function openResult(result:SearchResult){if(result.id.startsWith("tool:")){try{await openTool(result.id.slice(5));searchOpen.value=false;search.value=""}catch(e){store.notify(String(e))}return}try{await store.flushPendingSaves()}catch{store.notify('内容尚未保存，请检查后重试');return}store.searchTarget={kind:result.kind,id:result.id};page.value=result.kind==='note'?'notes':result.kind==='sticky'?'stickies':result.kind==='countdown'?'countdowns':'library';searchOpen.value=false;search.value=''}
 function handleSearchKeydown(event:KeyboardEvent){
   if(event.key==='Escape'){searchOpen.value=false;return}
   if(!searchResults.value.length)return

@@ -1,3 +1,4 @@
+import { findTools } from './tools'
 import { invoke } from '@tauri-apps/api/core'
 import type { ResourceKind, LaunchOptions } from './types'
 import type { AppSettings, BootstrapInfo, Countdown, Note, Resource, ResourceGroup, ScanCandidate, SearchResult, Sticky, TrashItem, BackupStatus } from './types'
@@ -63,7 +64,7 @@ export const api = {
   importCandidates: (candidates: ScanCandidate[]) => invoke<number>('import_scan_candidates', { candidates }),
   launchResource: (id: string) => invoke<string>('launch_resource', { id }),
   relocateResource: (id: string, target: string) => invoke<void>('relocate_resource', { id, target }),
-  search: (query: string) => invoke<SearchResult[]>('search_all', { query }),
+  search: async (query: string): Promise<SearchResult[]> => [...findTools(query).map(t=>({id:'tool:'+t.id,title:t.title,subtitle:'内置工具 · '+t.description,kind:'resource' as const})), ...await invoke<SearchResult[]>('search_all', { query })],
   moveDataDirectory: (newPath: string) => invoke<BootstrapInfo>('move_data_directory', { newPath }),
   restoreDefaultDataDirectory: () => invoke<BootstrapInfo>('restore_default_data_directory'),
   exportBackup: (destination: string) => invoke<void>('export_backup', { destination }),
