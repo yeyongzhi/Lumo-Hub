@@ -3,6 +3,7 @@ import { askConfirmation } from '@/lib/confirm'
 import { onMounted, onUnmounted, shallowRef, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { Update } from '@tauri-apps/plugin-updater'
 import { Download, RefreshCw, ShieldCheck } from '@lucide/vue'
@@ -14,6 +15,7 @@ const installing=ref(false)
 const progress=ref(0)
 const updateAvailable=shallowRef<Update|null>(null)
 const status=ref('')
+async function openReleases(){try{await openUrl('https://github.com/yeyongzhi/Lumo-Hub/releases')}catch(error){status.value=`无法打开下载页面：${String(error)}`}}
 onMounted(async()=>{try{version.value=await getVersion()}catch{version.value='未知版本'}})
 async function checkUpdate(){checking.value=true;status.value='';try{await updateAvailable.value?.close();updateAvailable.value=null;const metadata=await invoke<ConstructorParameters<typeof Update>[0]|null>('check_app_update');updateAvailable.value=metadata?new Update(metadata):null;status.value=updateAvailable.value?`发现新版本 ${updateAvailable.value.version}`:'当前已是最新版本。'}catch(error){status.value=/404|not found/i.test(String(error))?'当前发布源尚未提供更新清单，请稍后重试。':`检查更新失败：${String(error)}，可再次点击检查更新重试。`}finally{checking.value=false}}
 onUnmounted(()=>{void updateAvailable.value?.close().catch(()=>{})})
@@ -29,6 +31,7 @@ async function installUpdate(){if(!updateAvailable.value||!await askConfirmation
       <Badge>版本 {{ version }}</Badge>
       <div class="flex flex-wrap items-center gap-3"><Button :disabled="checking||installing" @click="checkUpdate"><RefreshCw data-icon="inline-start" />{{ checking?'正在检查…':'检查更新' }}</Button><Button v-if="updateAvailable" variant="outline" :disabled="installing" @click="installUpdate"><Download data-icon="inline-start" />{{ installing?`正在下载 ${progress}%`:'下载并安装' }}</Button></div>
       <p v-if="status" class="max-w-xl text-sm text-muted-foreground">{{ status }}</p>
+      <Button variant="link" @click="openReleases">前往发布页面手动下载</Button>
       <div v-if="updateAvailable" class="w-full max-w-xl rounded-2xl border border-border bg-muted/50 p-4 text-left"><div class="flex items-center gap-2 font-medium"><ShieldCheck class="size-4 text-primary" />版本 {{ updateAvailable.version }}</div><p class="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{{ updateAvailable.body||updateAvailable.rawJson?.notes||'此版本没有附带更新说明。' }}</p></div>
     </div>
 </template>

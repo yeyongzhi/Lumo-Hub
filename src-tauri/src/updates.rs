@@ -62,7 +62,14 @@ pub async fn check_app_update(webview: tauri::Webview) -> Result<Option<Value>, 
     let updater = webview.updater_builder().endpoints(vec![endpoint])
         .map_err(|e| e.to_string())?.timeout(Duration::from_secs(30))
         .build().map_err(|e| e.to_string())?;
-    let Some(update) = updater.check().await.map_err(|e| e.to_string())? else { return Ok(None) };
+    // GitHub asset redirects can fail transiently during TLS negotiation.
+    // Retry the complete updater request, retaining its manifest/signature checks.
+    let mut result = updater.check().await;
+    for _ in 0..2 {
+        if result.is_ok() { break; }
+        result = updater.check().await;
+    }
+    let Some(update) = result.map_err(|e| format!("无法获取有效更新清单（已尝试 3 次）：{e}。请检查 GitHub 及其下载域名的网络连接，或前往发布页面手动下载"))? else { return Ok(None) };
     let metadata = json!({
         "currentVersion": update.current_version,
         "version": update.version,

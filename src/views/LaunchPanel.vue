@@ -202,7 +202,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keydown);unlisten?.();chan
       <div v-if="!loading&&query.trim()&&!items.length" class="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3"><Button variant="outline" class="h-20" @click="main('library')">添加启动项 / 扫描本机</Button></div>
     </div>
     <footer class="flex h-11 shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-4" aria-label="快捷启动窗口操作">
-      <time class="truncate text-xs text-muted-foreground" :datetime="clockNow.toISOString()">{{ footerTimestamp }}</time>
+      <time class="truncate text-sm text-muted-foreground" :datetime="clockNow.toISOString()">{{ footerTimestamp }}</time>
       <div class="flex shrink-0 items-center gap-1">
         <Button variant="ghost" size="icon" aria-label="关闭快捷启动" title="关闭快捷启动" @click="api.hideLauncher()"><X class="size-4"/></Button>
         <Button variant="ghost" size="icon" aria-label="打开主面板" title="打开主面板" @click="main('home')"><PanelsTopLeft class="size-4"/></Button>
