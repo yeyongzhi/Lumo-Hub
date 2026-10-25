@@ -6,12 +6,14 @@ export default defineConfig({
   description: 'Lumo-Hub 是一款本地优先的 Windows 桌面效率工作台，集中管理常用应用、快速记录与每日安排。',
   base: '/Lumo-Hub/',
   head: [
+    ['link', { rel: 'icon', type: 'image/png', href: '/Lumo-Hub/brand/favicon.png' }],
     ['meta', { name: 'theme-color', content: '#f6f8fc' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'Lumo-Hub · 桌面效率工作台' }],
     ['meta', { property: 'og:description', content: '把日常工作，放回顺手的位置。' }]
   ],
   themeConfig: {
+    logo: '/brand/lumohub.png',
     nav: [
       { text: '产品功能', link: '/guide' },
       { text: '安装说明', link: '/install' },

@@ -4,12 +4,12 @@ import AboutPage from '@/views/AboutPage.vue'
 import EnhancementSettings from '@/components/EnhancementSettings.vue'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui/field'
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { CircleHelp, Check, Database, Download, FolderCog, Settings, Sun, Moon, Monitor, Upload, Keyboard, ShieldCheck, Trash2, AppWindow, LayoutGrid, List } from '@lucide/vue'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { AppSettings } from '@/lib/types'
 import { api } from '@/lib/api'
@@ -18,26 +18,22 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 const store=useWorkspaceStore()
 const busy=ref(false)
 const section=ref('appearance')
+const props=defineProps<{request?:{checkUpdate:boolean;id:number}|null}>()
+const aboutPage=ref<InstanceType<typeof AboutPage>|null>(null)
+watch(()=>props.request,async request=>{
+  if(!request)return
+  section.value='about'
+  await nextTick()
+  if(request.checkUpdate)void aboutPage.value?.checkUpdate()
+},{immediate:true})
 const settingsMenu=[{id:'appearance',label:'外观',icon:Settings},{id:'library',label:'应用库',icon:AppWindow},{id:'data',label:'数据与备份',icon:Database},{id:'launcher',label:'快捷启动',icon:Keyboard},{id:'backup',label:'自动备份',icon:ShieldCheck},{id:'trash',label:'回收站',icon:Trash2},{id:'about',label:'关于',icon:CircleHelp}]
-const sectionDescriptions:Record<string,string>={
-  appearance:'更改后立即预览，并在下次启动时保留。',
-  library:'设置应用库启动项的显示方式和排列密度。',
-  data:'数据只保存在本机，可随时备份或迁移。',
-  launcher:'程序运行或最小化时，随时唤出简洁面板。从托盘退出后快捷键停止生效。',
-  backup:'备份保存在当前数据目录的 backups 文件夹；包含内容、回收站、图标和设置。',
-  trash:'删除的便签、笔记和倒数日保留在这里，可恢复原内容。不会自动清空。',
-  about:'查看应用版本、检查更新。',
-}
-const currentSection=computed(()=>settingsMenu.find(item=>item.id===section.value)!)
 const fontSizes=computed(()=>[...new Set([12,14,16,18,20,24,store.settings.font_size])].sort((a,b)=>a-b))
-const sidebarWidths=[100,140,180,200,220,240,260,280]
 const radii=[{value:0,label:'直角 · 0 px'},{value:4,label:'微圆角 · 4 px'},{value:8,label:'小圆角 · 8 px'},{value:12,label:'中圆角 · 12 px'},{value:16,label:'大圆角 · 16 px（默认）'},{value:24,label:'超大圆角 · 24 px'}]
 const modes=[{id:'light',label:'浅色',icon:Sun},{id:'dark',label:'深色',icon:Moon},{id:'system',label:'跟随系统',icon:Monitor}] as const
 const accents=[{id:'red',label:'红',className:'bg-red-500'},{id:'orange',label:'橙',className:'bg-orange-500'},{id:'yellow',label:'黄',className:'bg-yellow-400'},{id:'green',label:'绿',className:'bg-green-500'},{id:'blue',label:'蓝',className:'bg-blue-500'},{id:'indigo',label:'靛',className:'bg-indigo-500'},{id:'violet',label:'紫',className:'bg-violet-500'}] as const
 async function setMode(mode:AppSettings['theme_mode']){try{await store.setSetting('theme_mode',mode)}catch{}}
 async function setAccent(accent:AppSettings['accent']){try{await store.setSetting('accent',accent)}catch{}}
 async function setFont(value:unknown){try{await store.setSetting('font_size',Number(value))}catch{}}
-async function setSidebarWidth(value:unknown){try{await store.setSetting('sidebar_width',Number(value))}catch{}}
 async function setRadius(value:unknown){try{await store.setSetting('border_radius',Number(value))}catch{}}
 async function setLibraryDisplay(value:unknown){if(value!=='grid'&&value!=='list')return;try{await store.saveClient('lumo-library-display',value)}catch(e){store.notify(`保存应用库设置失败：${String(e)}`)}}
 async function setLibraryDensity(value:unknown){if(value!=='compact'&&value!=='standard'&&value!=='comfortable')return;try{await store.saveClient('lumo-library-density',value)}catch(e){store.notify(`保存应用库设置失败：${String(e)}`)}}
@@ -47,14 +43,13 @@ async function restoreBackup(){const path=await open({defaultPath:`${store.boots
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-row items-stretch gap-6 overflow-hidden">
-    <Card class="min-h-0 w-44 shrink-0 gap-3 overflow-hidden p-3"><h2 class="shrink-0 px-2 text-sm font-semibold">设置</h2><ScrollArea class="min-h-0 flex-1"><nav class="flex w-full flex-col gap-1" aria-label="设置分类"><Button v-for="item in settingsMenu" :key="item.id" variant="ghost" class="h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm" :class="section===item.id?'bg-primary/10 font-semibold text-primary':'text-muted-foreground'" :aria-current="section===item.id?'page':undefined" @click="section=item.id"><component :is="item.icon" />{{ item.label }}</Button></nav></ScrollArea></Card>
+  <div class="flex min-h-0 flex-1 flex-col items-stretch gap-4 overflow-hidden">
+    <nav class="flex shrink-0 items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card p-2" aria-label="设置分类">
+      <Button v-for="item in settingsMenu" :key="item.id" variant="ghost" class="h-10 shrink-0 gap-2 rounded-lg px-3 text-sm" :class="section===item.id?'bg-primary/10 font-semibold text-primary':'text-muted-foreground'" :aria-current="section===item.id?'page':undefined" @click="section=item.id"><component :is="item.icon" />{{ item.label }}</Button>
+    </nav>
     <Card class="min-h-0 min-w-0 flex-1 gap-0 overflow-hidden py-0" data-settings-panel>
-      <CardHeader class="flex shrink-0 flex-row items-center gap-3 border-b border-border py-5" data-settings-header>
-        <div class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"><component :is="currentSection.icon" class="size-6" aria-hidden="true" /></div>
-        <div class="min-w-0 flex-1"><CardTitle>{{ currentSection.label }}</CardTitle><CardDescription class="mt-1">{{ sectionDescriptions[section] }}</CardDescription></div>
-      </CardHeader>
-      <ScrollArea :key="section" class="min-h-0 flex-1" data-settings-scroll>
+      <CardContent v-if="section==='trash'" class="flex min-h-0 flex-1 flex-col overflow-y-auto py-6"><EnhancementSettings section="trash" @restore-backup="restoreBackup" /></CardContent>
+      <ScrollArea v-else :key="section" class="min-h-0 flex-1" data-settings-scroll>
       <CardContent class="py-6">
     <div v-if="section=== 'appearance'" class="flex min-w-0 flex-col gap-6">
     
@@ -62,7 +57,6 @@ async function restoreBackup(){const path=await open({defaultPath:`${store.boots
         <section><h3 class="mb-3 text-base font-semibold">外观模式</h3><div class="grid max-w-2xl grid-cols-3 gap-3"><Button v-for="mode in modes" :key="mode.id" variant="outline" class="h-auto justify-start rounded-xl py-3" :class="store.settings.theme_mode===mode.id?'border-primary bg-primary/5 text-primary':''" @click="setMode(mode.id)"><component :is="mode.icon" />{{ mode.label }}<Check v-if="store.settings.theme_mode===mode.id" class="ml-auto" /></Button></div></section>
         <section><h3 class="mb-3 text-base font-semibold">强调色</h3><div class="flex flex-wrap gap-3"><Button v-for="accent in accents" :key="accent.id" variant="outline" size="sm" class="rounded-full" :class="store.settings.accent===accent.id?'ring-2 ring-primary ring-offset-2 ring-offset-background':''" :aria-label="`${accent.label}色主题`" @click="setAccent(accent.id)"><span class="size-4 rounded-full" :class="accent.className"></span>{{ accent.label }}</Button></div></section>
         <FieldGroup>
-          <Field><FieldLabel class="text-base font-semibold" for="sidebar-width">侧边栏宽度</FieldLabel><Select :model-value="String(store.settings.sidebar_width ?? 240)" @update:model-value="setSidebarWidth"><SelectTrigger id="sidebar-width" class="w-full max-w-xs"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="width in sidebarWidths" :key="width" :value="String(width)">{{ width }} px{{ width===240?'（默认）':'' }}</SelectItem></SelectGroup></SelectContent></Select><FieldDescription>调整展开后的主侧边栏宽度，收缩后的宽度保持一致。</FieldDescription></Field>
           <Field><FieldLabel class="text-base font-semibold" for="global-radius">全局圆角</FieldLabel><Select :model-value="String(store.settings.border_radius ?? 16)" @update:model-value="setRadius"><SelectTrigger id="global-radius" class="w-full max-w-xs"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="option in radii" :key="option.value" :value="String(option.value)">{{ option.label }}</SelectItem></SelectGroup></SelectContent></Select><FieldDescription>统一调整卡片、按钮、输入框和弹窗的圆角。</FieldDescription></Field>
           <Field><FieldLabel class="text-base font-semibold" for="global-font-size">全局字体大小</FieldLabel><Select :model-value="String(store.settings.font_size)" @update:model-value="setFont"><SelectTrigger id="global-font-size" class="w-full max-w-xs"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="size in fontSizes" :key="size" :value="String(size)">{{ size }} px{{ size===14?'（默认）':'' }}</SelectItem></SelectGroup></SelectContent></Select><FieldDescription>选择适合阅读的字号，整个应用立即更新。</FieldDescription></Field>
         </FieldGroup>
@@ -81,8 +75,8 @@ async function restoreBackup(){const path=await open({defaultPath:`${store.boots
         <div><h3 class="mb-1 text-base font-semibold">备份与恢复</h3><p class="mb-3 text-sm text-muted-foreground">备份会包含数据库和用户资源。恢复前会自动备份当前数据。</p><div class="flex gap-2"><Button variant="outline" :disabled="busy" @click="createBackup"><Download data-icon="inline-start" />导出备份</Button><Button variant="outline" :disabled="busy" @click="restoreBackup"><Upload data-icon="inline-start" />恢复备份</Button></div></div>
       </div>
     </div>
-    <div v-else-if="['launcher','backup','trash'].includes(section)" :key="section" class="flex min-w-0 flex-col gap-6"><EnhancementSettings :section="section" @restore-backup="restoreBackup" /></div>
-    <div v-else-if="section=== 'about'" class="flex min-w-0 flex-col gap-6"><AboutPage /></div>
+    <div v-else-if="['launcher','backup'].includes(section)" :key="section" class="flex min-w-0 flex-col gap-6"><EnhancementSettings :section="section" @restore-backup="restoreBackup" /></div>
+    <div v-else-if="section=== 'about'" class="flex min-w-0 flex-col gap-6"><AboutPage ref="aboutPage" /></div>
     </CardContent>
     </ScrollArea>
     </Card>

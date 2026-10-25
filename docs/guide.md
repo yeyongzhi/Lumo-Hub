@@ -41,7 +41,7 @@ Lumo-Hub 是一款面向 Windows 的本地优先桌面效率工作台。你可�
 
 ## 安装与更新
 
-从 [GitHub Releases](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.4) 下载 Windows x64 安装包并运行。当前版本处于 Beta 阶段；Beta 版本可能存在未发现的问题，请先备份重要资料。Beta 版本可手动安装更新，也可在“设置 → 关于”检查更新；在线更新需要发布源可访问并提供签名安装包与清单。完整步骤见[安装说明](/install)。
+从 [GitHub Releases](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.5) 下载 Windows x64 安装包并运行。当前版本处于 Beta 阶段；Beta 版本可能存在未发现的问题，请先备份重要资料。Beta 版本可手动安装更新，也可在“设置 → 关于”检查更新；在线更新需要发布源可访问并提供签名安装包与清单。完整步骤见[安装说明](/install)。
 
 ## 问题反馈
 

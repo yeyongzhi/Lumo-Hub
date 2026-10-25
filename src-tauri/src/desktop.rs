@@ -36,7 +36,18 @@ pub fn setup(app:&tauri::AppHandle)->Result<(),String>{
     let quick=MenuItem::with_id(app,"quick","快捷启动",true,None::<&str>).map_err(|e|e.to_string())?;
     let quit=MenuItem::with_id(app,"quit","退出",true,None::<&str>).map_err(|e|e.to_string())?;
     let menu=Menu::with_items(app,&[&show,&quick,&quit]).map_err(|e|e.to_string())?;
-    TrayIconBuilder::with_id("lumo-tray").icon(app.default_window_icon().ok_or("缺少应用图标")?.clone()).tooltip("Lumo · 随时启动与记录").menu(&menu).show_menu_on_left_click(false)
+    // Embed the tray asset directly so icon changes invalidate the Rust build.
+    let decoder=png::Decoder::new(std::io::Cursor::new(include_bytes!("../icons/128x128.png")));
+    let mut reader=decoder.read_info().map_err(|e|e.to_string())?;
+    let mut pixels=vec![0;reader.output_buffer_size().ok_or("托盘图标过大")?];
+    let info=reader.next_frame(&mut pixels).map_err(|e|e.to_string())?;
+    if info.color_type!=png::ColorType::Rgba || info.bit_depth!=png::BitDepth::Eight {return Err("托盘图标必须为 RGBA8".into());}
+    pixels.truncate(info.buffer_size());
+    let tray_icon=tauri::image::Image::new_owned(pixels,info.width,info.height);
+    for window in app.webview_windows().values() {
+        window.set_icon(tray_icon.clone()).map_err(|e|e.to_string())?;
+    }
+    TrayIconBuilder::with_id("lumo-tray").icon(tray_icon).tooltip("Lumo · 随时启动与记录").menu(&menu).show_menu_on_left_click(false)
     .on_menu_event(|app,event|match event.id.as_ref(){"show"=>show_main(app),"quick"=>{let _=crate::launcher::show(app);},"quit"=>{remember(app);let _=app.emit("lumo-quit-requested",());},_=>{}})
     .on_tray_icon_event(|tray,event|{if matches!(event,TrayIconEvent::Click{button:MouseButton::Left,button_state:MouseButtonState::Up,..}){show_main(tray.app_handle());}}).build(app).map_err(|e|e.to_string())?;
     Ok(())

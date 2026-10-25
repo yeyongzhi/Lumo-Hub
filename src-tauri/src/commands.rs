@@ -286,7 +286,7 @@ pub fn set_setting(
         }
         "sidebar_width" => {
             let width = value.as_u64().and_then(|v| u16::try_from(v).ok()).ok_or("侧边栏宽度无效")?;
-            if ![100, 140, 180, 200, 220, 240, 260, 280].contains(&width) { return Err("不支持的侧边栏宽度".into()); }
+            if !(100..=280).contains(&width) { return Err("不支持的侧边栏宽度".into()); }
             settings.sidebar_width = width;
         }
         "border_radius" => {

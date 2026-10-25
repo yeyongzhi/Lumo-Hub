@@ -9,7 +9,7 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { exit } from '@tauri-apps/plugin-process'
 import { open } from '@tauri-apps/plugin-dialog'
-import { AppWindow, BookOpenText, CalendarDays, ChevronRight, CircleHelp, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Sun, Moon, Monitor, Check, Plus, Home, CalendarPlus, StickyNote as StickyNoteIcon, NotebookPen } from '@lucide/vue'
+import { AppWindow, BookOpenText, CalendarDays, ChevronRight, CircleHelp, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Sun, Moon, Monitor, Check, Plus, Home, CalendarPlus, StickyNote as StickyNoteIcon, NotebookPen, RefreshCw } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { AppSettings } from '@/lib/types'
@@ -32,6 +32,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 const store=useWorkspaceStore()
 const page=ref<PageId>('home')
+const settingsRequest=ref<{checkUpdate:boolean;id:number}|null>(null)
+async function openAbout(checkUpdate=false){
+  if(!await navigate('settings'))return
+  settingsRequest.value={checkUpdate,id:(settingsRequest.value?.id??0)+1}
+}
 const captureOpen=ref(false), shortcutsOpen=ref(false), captureText=ref('')
 function showCapture(text=''){captureText.value=text;captureOpen.value=true}
 async function addFromSearch(){if(await navigate('library'))await nextTick(()=>window.dispatchEvent(new Event('lumo-new')))}
@@ -40,13 +45,36 @@ function keyboard(event:KeyboardEvent){if(event.isComposing||event.repeat)return
 const search=ref('')
 const searchResults=ref<SearchResult[]>([])
 const searchOpen=ref(false)
-const systemTheme=window.matchMedia('(prefers-color-scheme: dark)')
-const systemDark=ref(systemTheme.matches)
-const darkMode=computed(()=>store.settings.theme_mode==='dark'||(store.settings.theme_mode==='system'&&systemDark.value))
-function updateSystemDark(){systemDark.value=systemTheme.matches}
 const themePopoverOpen=ref(false)
 const themeModes=[{value:'light',label:'浅色',icon:Sun},{value:'dark',label:'深色',icon:Moon},{value:'system',label:'跟随系统',icon:Monitor}] as const
-const narrowSidebar=computed(()=>(store.settings.sidebar_width ?? 240)<140)
+const currentThemeMode=computed(()=>themeModes.find(mode=>mode.value===store.settings.theme_mode) ?? themeModes[2])
+const sidebarDragWidth=ref<number|null>(null)
+const sidebarWidth=computed(()=>sidebarDragWidth.value ?? store.settings.sidebar_width ?? 240)
+const narrowSidebar=computed(()=>sidebarWidth.value<140)
+let sidebarDragStartX=0, sidebarDragStartWidth=0
+function startSidebarResize(event:PointerEvent){
+  if(event.button!==0)return
+  event.preventDefault()
+  sidebarDragStartX=event.clientX
+  sidebarDragStartWidth=sidebarWidth.value
+  sidebarDragWidth.value=sidebarDragStartWidth
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+}
+function resizeSidebar(event:PointerEvent){
+  if(sidebarDragWidth.value===null)return
+  sidebarDragWidth.value=Math.round(Math.max(100,Math.min(280,sidebarDragStartWidth+event.clientX-sidebarDragStartX)))
+}
+function finishSidebarResize(){
+  if(sidebarDragWidth.value===null)return
+  const width=sidebarDragWidth.value
+  void store.setSetting('sidebar_width',width).catch(()=>{})
+  sidebarDragWidth.value=null
+}
+function resizeSidebarWithKeyboard(event:KeyboardEvent){
+  if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight')return
+  event.preventDefault()
+  void store.setSetting('sidebar_width',Math.max(100,Math.min(280,sidebarWidth.value+(event.key==='ArrowRight'?10:-10)))).catch(()=>{})
+}
 async function selectTheme(mode:AppSettings['theme_mode']){try{await store.setSetting('theme_mode',mode);themePopoverOpen.value=false}catch{}}
 const sidebarCollapsed=ref(false)
 let sidebarReady=false
@@ -108,7 +136,6 @@ async function useDefaultRecoveryDirectory(){
 }
 onMounted(async()=>{
   window.addEventListener('keydown',keyboard)
-  systemTheme.addEventListener('change',updateSystemDark)
   const appWindow=getCurrentWindow()
   removeCloseListener=await appWindow.onCloseRequested(async event=>{
     event.preventDefault()
@@ -131,7 +158,7 @@ onMounted(async()=>{
   if(!store.startupError&&!store.recoveryError&&!store.cleanUninstall) { try{await api.openStartupView()}catch(e){store.notify(String(e))} }
   removeThemeListener=watchSystemTheme(()=>store.settings)
 })
-onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.forEach(unlisten=>unlisten());systemTheme.removeEventListener('change',updateSystemDark);if(searchTimer)clearTimeout(searchTimer);removeThemeListener?.();removeCloseListener?.();removeCleanUninstallListener?.();removeResourceListener?.();removeNavigationListener?.()})
+onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.forEach(unlisten=>unlisten());if(searchTimer)clearTimeout(searchTimer);removeThemeListener?.();removeCloseListener?.();removeCleanUninstallListener?.();removeResourceListener?.();removeNavigationListener?.()})
 </script>
 
 <template>
@@ -178,7 +205,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
     <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
     <WindowControls class="absolute right-4 top-3" />
     <Card class="flex w-full max-w-2xl flex-col items-center p-12 text-center">
-      <div class="mb-7 flex size-20 items-center justify-center rounded-2xl bg-primary text-3xl font-bold text-primary-foreground shadow-lg">L</div>
+      <img src="/brand/lumohub.png" alt="LumoHub" class="mb-7 size-20 shrink-0 object-contain" />
       <p class="mb-3 text-sm font-medium text-primary">欢迎来到 Lumo-Hub</p>
       <h1 class="max-w-lg text-4xl font-semibold leading-tight tracking-tight">把日常的小事，<br />安放在一个地方。</h1>
       <p class="mt-5 max-w-md text-base leading-7 text-muted-foreground">记录想法、整理笔记、记住重要日子，也让常用的应用和文件触手可及。你的数据保存在本机。</p>
@@ -187,13 +214,13 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
     </Card>
   </main>
   <div v-else class="flex h-dvh flex-col overflow-hidden bg-background">
-      <header class="relative z-20 flex h-16 shrink-0 items-center gap-4 bg-background/90 px-6 backdrop-blur" @mousedown="startWindowDrag">
+      <header class="relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 py-2 backdrop-blur" @mousedown="startWindowDrag">
         <div class="flex shrink-0 items-center gap-2" data-no-drag>
-          <div class="flex items-center gap-2 pr-2"><div class="flex size-8 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">L</div><span class="text-sm font-semibold tracking-tight">Lumo</span></div>
+          <div class="flex items-center pr-2"><img src="/brand/lumohub.png" alt="LumoHub" class="size-8 shrink-0 object-contain" /></div>
           <nav class="flex items-center gap-0.5" aria-label="快捷菜单">
             <DropdownMenu><DropdownMenuTrigger as-child><Button variant="ghost" class="h-8 px-2 text-sm">文件</Button></DropdownMenuTrigger><DropdownMenuContent align="start" class="w-52"><DropdownMenuItem @click="newItem"><Plus data-icon="inline-start"/>新建 / 快速记录<kbd class="ml-auto text-xs text-muted-foreground">Ctrl N</kbd></DropdownMenuItem><DropdownMenuItem @click="store.flushPendingSaves().then(()=>store.notify('已保存')).catch(e=>store.notify(String(e)))"><BookOpenText data-icon="inline-start"/>保存当前内容<kbd class="ml-auto text-xs text-muted-foreground">Ctrl S</kbd></DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem @click="navigate('settings')"><Settings data-icon="inline-start"/>设置</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
             <DropdownMenu><DropdownMenuTrigger as-child><Button variant="ghost" class="h-8 px-2 text-sm">导航</Button></DropdownMenuTrigger><DropdownMenuContent align="start" class="w-44"><DropdownMenuItem @click="navigate('home')"><Home data-icon="inline-start"/>首页</DropdownMenuItem><DropdownMenuItem @click="navigate('countdowns')"><CalendarPlus data-icon="inline-start"/>倒数日</DropdownMenuItem><DropdownMenuItem @click="navigate('stickies')"><StickyNoteIcon data-icon="inline-start"/>便签</DropdownMenuItem><DropdownMenuItem @click="navigate('notes')"><NotebookPen data-icon="inline-start"/>笔记</DropdownMenuItem><DropdownMenuItem @click="navigate('library')"><AppWindow data-icon="inline-start"/>应用库</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
-            <DropdownMenu><DropdownMenuTrigger as-child><Button variant="ghost" class="h-8 px-2 text-sm">帮助</Button></DropdownMenuTrigger><DropdownMenuContent align="start" class="w-44"><DropdownMenuItem @click="shortcutsOpen=true"><BookOpenText data-icon="inline-start"/>快捷键说明</DropdownMenuItem><DropdownMenuItem @click="navigate('settings')"><Settings data-icon="inline-start"/>设置</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+            <DropdownMenu><DropdownMenuTrigger as-child><Button variant="ghost" class="h-8 px-2 text-sm">帮助</Button></DropdownMenuTrigger><DropdownMenuContent align="start" class="w-44"><DropdownMenuItem @click="shortcutsOpen=true"><BookOpenText data-icon="inline-start"/>快捷键说明</DropdownMenuItem><DropdownMenuItem @click="navigate('settings')"><Settings data-icon="inline-start"/>设置</DropdownMenuItem><DropdownMenuItem @click="openAbout()"><CircleHelp data-icon="inline-start"/>关于</DropdownMenuItem><DropdownMenuItem @click="openAbout(true)"><RefreshCw data-icon="inline-start"/>检查更新</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
           </nav>
         </div>
         <div class="min-w-0 flex-1"></div>
@@ -205,11 +232,12 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
             <div class="border-t border-border px-4 py-2 text-[0.6875rem] text-muted-foreground">本地搜索 · 搜索结果仅保存在此设备</div>
           </div>
         </div>
-        <div class="flex min-w-0 flex-1 items-center justify-end gap-1" data-no-drag><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" title="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><Popover v-model:open="themePopoverOpen"><PopoverTrigger as-child><Button variant="ghost" size="icon-sm" aria-label="选择外观模式" title="选择外观模式"><Sun v-if="darkMode"/><Moon v-else/></Button></PopoverTrigger><PopoverContent align="end" class="w-44 p-2"><p class="px-2 py-2 text-sm font-medium">外观模式</p><div class="flex flex-col gap-1"><Button v-for="mode in themeModes" :key="mode.value" variant="ghost" class="w-full justify-start" :aria-pressed="store.settings.theme_mode===mode.value" @click="selectTheme(mode.value)"><component :is="mode.icon" data-icon="inline-start"/>{{mode.label}}<Check v-if="store.settings.theme_mode===mode.value" class="ml-auto"/></Button></div></PopoverContent></Popover><Button variant="ghost" size="icon-sm" aria-label="设置" title="设置" :aria-pressed="page==='settings'" @click="navigate('settings')"><Settings/></Button><WindowControls /></div>
+        <div class="flex min-w-0 flex-1 items-center justify-end gap-1" data-no-drag><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" title="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><Popover v-model:open="themePopoverOpen"><PopoverTrigger as-child><Button variant="ghost" size="icon-sm" :aria-label="`外观模式：${currentThemeMode.label}`" :title="`外观模式：${currentThemeMode.label}`"><component :is="currentThemeMode.icon"/></Button></PopoverTrigger><PopoverContent align="end" class="w-44 p-2"><p class="px-2 py-2 text-sm font-medium">外观模式</p><div class="flex flex-col gap-1"><Button v-for="mode in themeModes" :key="mode.value" variant="ghost" class="w-full justify-start" :aria-pressed="store.settings.theme_mode===mode.value" @click="selectTheme(mode.value)"><component :is="mode.icon" data-icon="inline-start"/>{{mode.label}}<Check v-if="store.settings.theme_mode===mode.value" class="ml-auto"/></Button></div></PopoverContent></Popover><Button variant="ghost" size="icon-sm" aria-label="设置" title="设置" :aria-pressed="page==='settings'" @click="navigate('settings')"><Settings/></Button><WindowControls /></div>
       </header>
       <div class="flex min-h-0 flex-1 overflow-hidden">
 
-    <aside class="flex shrink-0 flex-col border-r border-border bg-card/70 transition-[width] duration-200" :style="{width:sidebarCollapsed?'4.5rem':`${store.settings.sidebar_width ?? 240}px`}">
+    <aside class="relative flex shrink-0 flex-col border-r border-border bg-card/70" :class="sidebarDragWidth===null?'transition-[width] duration-200':'select-none'" :style="{width:sidebarCollapsed?'4.5rem':`${sidebarWidth}px`}">
+      <div v-if="!sidebarCollapsed" role="separator" aria-label="调整侧边栏宽度" aria-orientation="vertical" :aria-valuenow="sidebarWidth" :aria-valuemin="100" :aria-valuemax="280" tabindex="0" title="拖动调整侧边栏宽度" class="absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20 focus-visible:outline-none" @pointerdown="startSidebarResize" @pointermove="resizeSidebar" @pointerup="finishSidebarResize" @pointercancel="finishSidebarResize" @lostpointercapture="finishSidebarResize" @keydown="resizeSidebarWithKeyboard" />
       <nav class="flex flex-col gap-1 py-3" :class="sidebarCollapsed?'px-2':narrowSidebar?'px-1':'px-3'" aria-label="主导航">
         <Button v-for="item in nav" :key="item.id" variant="ghost" class="h-11 rounded-xl text-sm" :class="[sidebarCollapsed?'w-full justify-center px-0':narrowSidebar?'w-full justify-start gap-1 px-1':'w-full justify-start gap-3 px-3',page===item.id?'bg-primary/10 font-semibold text-primary':'text-muted-foreground']" :aria-label="sidebarCollapsed?item.label:undefined" :title="sidebarCollapsed?item.label:undefined" @click="navigate(item.id)"><component :is="item.icon" /><span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span></Button>
       </nav>
@@ -223,7 +251,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
     <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
       <main :key="page" class="min-h-0 flex-1 px-4 pt-4" :class="['notes','stickies','library','countdowns','settings'].includes(page)?'flex flex-col overflow-hidden pb-4':'overflow-y-auto overscroll-contain'">
-        <component :is="currentView" @navigate="navigate" />
+        <component :is="currentView" v-bind="page==='settings'?{request:settingsRequest}:{}" @navigate="navigate" />
       </main>
     </section>
       </div>
