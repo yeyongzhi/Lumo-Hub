@@ -9,10 +9,8 @@ import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { exit } from '@tauri-apps/plugin-process'
 import { open } from '@tauri-apps/plugin-dialog'
-import { AppWindow, BookOpenText, CalendarDays, ChevronRight, CircleHelp, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Sun, Moon, Monitor, Check, Plus, Home, CalendarPlus, StickyNote as StickyNoteIcon, NotebookPen, RefreshCw } from '@lucide/vue'
+import { AppWindow, BookOpenText, CalendarDays, ChevronRight, CircleHelp, House, PanelLeftClose, PanelLeftOpen, Search, Settings, StickyNote, Plus, Home, CalendarPlus, StickyNote as StickyNoteIcon, NotebookPen, RefreshCw } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { AppSettings } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import WindowControls from '@/components/WindowControls.vue'
@@ -45,9 +43,7 @@ function keyboard(event:KeyboardEvent){if(event.isComposing||event.repeat)return
 const search=ref('')
 const searchResults=ref<SearchResult[]>([])
 const searchOpen=ref(false)
-const themePopoverOpen=ref(false)
-const themeModes=[{value:'light',label:'浅色',icon:Sun},{value:'dark',label:'深色',icon:Moon},{value:'system',label:'跟随系统',icon:Monitor}] as const
-const currentThemeMode=computed(()=>themeModes.find(mode=>mode.value===store.settings.theme_mode) ?? themeModes[2])
+function reloadPage(){window.location.reload()}
 const sidebarDragWidth=ref<number|null>(null)
 const sidebarWidth=computed(()=>sidebarDragWidth.value ?? store.settings.sidebar_width ?? 240)
 const narrowSidebar=computed(()=>sidebarWidth.value<140)
@@ -75,7 +71,6 @@ function resizeSidebarWithKeyboard(event:KeyboardEvent){
   event.preventDefault()
   void store.setSetting('sidebar_width',Math.max(100,Math.min(280,sidebarWidth.value+(event.key==='ArrowRight'?10:-10)))).catch(()=>{})
 }
-async function selectTheme(mode:AppSettings['theme_mode']){try{await store.setSetting('theme_mode',mode);themePopoverOpen.value=false}catch{}}
 const sidebarCollapsed=ref(false)
 let sidebarReady=false
 readLocal<boolean>('lumo-sidebar-collapsed').then(value=>{sidebarCollapsed.value=value===true;sidebarReady=true}).catch(e=>store.notify(String(e)))
@@ -232,7 +227,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
             <div class="border-t border-border px-4 py-2 text-[0.6875rem] text-muted-foreground">本地搜索 · 搜索结果仅保存在此设备</div>
           </div>
         </div>
-        <div class="flex min-w-0 flex-1 items-center justify-end gap-1" data-no-drag><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" title="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><Popover v-model:open="themePopoverOpen"><PopoverTrigger as-child><Button variant="ghost" size="icon-sm" :aria-label="`外观模式：${currentThemeMode.label}`" :title="`外观模式：${currentThemeMode.label}`"><component :is="currentThemeMode.icon"/></Button></PopoverTrigger><PopoverContent align="end" class="w-44 p-2"><p class="px-2 py-2 text-sm font-medium">外观模式</p><div class="flex flex-col gap-1"><Button v-for="mode in themeModes" :key="mode.value" variant="ghost" class="w-full justify-start" :aria-pressed="store.settings.theme_mode===mode.value" @click="selectTheme(mode.value)"><component :is="mode.icon" data-icon="inline-start"/>{{mode.label}}<Check v-if="store.settings.theme_mode===mode.value" class="ml-auto"/></Button></div></PopoverContent></Popover><Button variant="ghost" size="icon-sm" aria-label="设置" title="设置" :aria-pressed="page==='settings'" @click="navigate('settings')"><Settings/></Button><WindowControls /></div>
+        <div class="flex min-w-0 flex-1 items-center justify-end gap-1" data-no-drag><Button variant="ghost" size="icon-sm" aria-label="刷新" title="刷新" @click="reloadPage"><RefreshCw /></Button><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" title="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><Button variant="ghost" size="icon-sm" aria-label="设置" title="设置" :aria-pressed="page==='settings'" @click="navigate('settings')"><Settings/></Button><WindowControls /></div>
       </header>
       <div class="flex min-h-0 flex-1 overflow-hidden">
 

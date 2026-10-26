@@ -15,4 +15,4 @@ const parts = computed(() => {
   return pieces
 })
 </script>
-<template><template v-for="(part,index) in parts" :key="index"><mark v-if="part.match" class="rounded-sm bg-primary/15 text-inherit">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></template>
+<template><template v-for="(part,index) in parts" :key="index"><mark v-if="part.match" class="rounded-sm bg-primary/15 font-bold text-primary">{{ part.text }}</mark><template v-else>{{ part.text }}</template></template></template>

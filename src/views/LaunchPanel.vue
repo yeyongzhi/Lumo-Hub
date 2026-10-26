@@ -8,7 +8,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/in
 import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Globe, AppWindow, CalendarDays, FileText, NotebookPen, StickyNote, Monitor, Trash2, Folder, Terminal, SquareTerminal, Settings, Settings2, Calculator, Cpu, X, PanelsTopLeft } from '@lucide/vue'
+import { Globe, AppWindow, CalendarDays, FileText, NotebookPen, StickyNote, Monitor, Trash2, Folder, Terminal, SquareTerminal, Settings, Settings2, Calculator, Cpu, PanelsTopLeft } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { applySettings, watchSystemTheme } from '@/lib/theme'
@@ -175,7 +175,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keydown);unlisten?.();chan
 
 <template>
   <div class="launch-panel flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-background" @keydown.enter.capture="openSelected" @focusin="selectFocused">
-    <div class="shrink-0 border-b border-border p-2" @mousedown="startDrag">
+    <div class="shrink-0 border-b border-border px-5 py-4" @mousedown="startDrag">
       <InputGroup class="h-10 w-full">
         <InputGroupAddon align="inline-start">
           <Select v-model="searchScope">
@@ -204,7 +204,6 @@ onUnmounted(()=>{window.removeEventListener('keydown',keydown);unlisten?.();chan
     <footer class="flex h-11 shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-4" aria-label="快捷启动窗口操作">
       <time class="truncate text-sm text-muted-foreground" :datetime="clockNow.toISOString()">{{ footerTimestamp }}</time>
       <div class="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="icon" aria-label="关闭快捷启动" title="关闭快捷启动" @click="api.hideLauncher()"><X class="size-4"/></Button>
         <Button variant="ghost" size="icon" aria-label="打开主面板" title="打开主面板" @click="main('home')"><PanelsTopLeft class="size-4"/></Button>
       </div>
     </footer>

@@ -36,11 +36,11 @@ features:
   <h2>从打开电脑开始，少一点寻找，多一点专注。</h2>
   <p>Lumo-Hub 将常用启动项、快速记录和每日安排放进同一个工作台。你可以从一个快捷启动面板开始，也可以逐步搭建适合自己的首页。</p>
   <div class="product-links">
-    <a href="https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.5">前往 GitHub 下载最新测试版 <span aria-hidden="true">↗</span></a>
+    <a href="https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.6">前往 GitHub 下载最新测试版 <span aria-hidden="true">↗</span></a>
   </div>
 </div>
 
 <div class="product-note">
-  <strong>当前版本：0.0.1-beta.5</strong>
+  <strong>当前版本：0.0.1-beta.6</strong>
   <span>目前提供 Windows 测试版。安装前请备份重要内容，并通过 GitHub Issues 反馈问题。</span>
 </div>

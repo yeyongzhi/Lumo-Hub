@@ -13,6 +13,10 @@ pub fn reveal_resource(state: State<'_, AppState>, id: String) -> Result<(), Str
     if kind == "web" {
         return Err("网页没有本地文件夹".into());
     }
+    if crate::app_scan::apps_folder_id(&target).is_some() {
+        std::process::Command::new("explorer.exe").arg("shell:AppsFolder").spawn().map_err(|e|e.to_string())?;
+        return Ok(());
+    }
     if !std::path::Path::new(&target).exists() {
         return Err("路径已失效，请重新定位".into());
     }
@@ -82,5 +86,13 @@ pub fn batch_resources(
 #[tauri::command]
 pub async fn resource_health(state: State<'_,AppState>)->Result<std::collections::HashMap<String,bool>,String>{
     let rows={let db=state.db.lock().map_err(|_|"数据库不可用")?;let mut stmt=db.prepare("SELECT id,target FROM resources WHERE kind!='web'").map_err(|e|e.to_string())?;let rows=stmt.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?))).map_err(|e|e.to_string())?;rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|e|e.to_string())?};
-    tauri::async_runtime::spawn_blocking(move||{let links=crate::app_scan::resolve_shortcuts(&rows.iter().map(|(_,target)|target.clone()).collect::<Vec<_>>()).unwrap_or_default();rows.into_iter().map(|(id,target)|{let exists=std::path::Path::new(&target).exists()&&links.get(&crate::app_scan::path_key(&target)).is_none_or(|link|std::path::Path::new(&link.target).exists());(id,exists)}).collect()}).await.map_err(|e|e.to_string())
+    tauri::async_runtime::spawn_blocking(move||{
+        let shell_targets=if rows.iter().any(|(_,target)|crate::app_scan::apps_folder_id(target).is_some()) { crate::app_scan::registered_shell_targets()? } else { std::collections::HashSet::new() };
+        let links=crate::app_scan::resolve_shortcuts(&rows.iter().map(|(_,target)|target.clone()).collect::<Vec<_>>())?;
+        Ok(rows.into_iter().map(|(id,target)|{
+            let exists=if crate::app_scan::apps_folder_id(&target).is_some() { shell_targets.contains(&crate::app_scan::path_key(&target)) }
+                else { std::path::Path::new(&target).exists()&&links.get(&crate::app_scan::path_key(&target)).is_none_or(|link|std::path::Path::new(&link.target).exists()) };
+            (id,exists)
+        }).collect())
+    }).await.map_err(|e|e.to_string())?
 }

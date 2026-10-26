@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { applySettings, watchSystemTheme } from '@/lib/theme'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+const CalendarTool=defineAsyncComponent(()=>import('@/components/tools/CalendarTool.vue'))
 const ColorTool=defineAsyncComponent(()=>import('@/components/tools/ColorTool.vue'))
 const ClipboardTool=defineAsyncComponent(()=>import('@/components/tools/ClipboardTool.vue'))
 const QrTool=defineAsyncComponent(()=>import('@/components/tools/QrTool.vue'))
@@ -16,7 +17,7 @@ const FloatingTool=defineAsyncComponent(()=>import('@/components/tools/FloatingT
 const TimestampTool=defineAsyncComponent(()=>import('@/components/tools/TimestampTool.vue'))
 const id=new URLSearchParams(location.search).get('tool')??'color'
 const tool=builtinTools.find(t=>t.id===id)??builtinTools[0]
-const components={color:ColorTool,clipboard:ClipboardTool,qrcode:QrTool,text:TextTool,floating:FloatingTool,timestamp:TimestampTool}
+const components={calendar:CalendarTool,color:ColorTool,clipboard:ClipboardTool,qrcode:QrTool,text:TextTool,floating:FloatingTool,timestamp:TimestampTool}
 const pinned=ref(id==='floating'),error=ref('')
 const removers:(()=>void)[]=[]
 async function pin(){try{await getCurrentWindow().setAlwaysOnTop(!pinned.value);pinned.value=!pinned.value}catch(e){error.value=String(e)}}

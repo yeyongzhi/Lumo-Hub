@@ -10,6 +10,7 @@ function toolIcon(id:string){
 import { invoke } from '@tauri-apps/api/core'
 
 export const builtinTools = [
+  { id: 'calendar', title: '日历', aliases: '日历 万年历 农历 黄历 节气 节假日 calendar lunar rili wannianli', description: '月历、农历节气与每日传统黄历', icon: toolIcon('calendar') },
   { id: 'color', title: '取色器 + 色板', aliases: '取色 配色 颜色 色板 color picker colorPicker palette quse yanse', description: '屏幕取色、颜色转换与收藏色板', icon: toolIcon('color') },
   { id: 'clipboard', title: '剪贴板', aliases: '剪切板 复制 历史 clipboard copy paste history jiantieban', description: '本机文本与图片复制历史', icon: toolIcon('clipboard') },
   { id: 'qrcode', title: '二维码工具', aliases: '二维码 二维码生成 识别 qr qrcode qrCode erweima', description: '生成二维码、识别图片二维码', icon: toolIcon('qrcode') },

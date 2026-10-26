@@ -6,9 +6,9 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 **本地优先 · 快捷启动 · 自定义工作台 · 便签与笔记**
 
-[产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.5)
+[产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.6)
 
-> 当前代码版本：**0.0.1-beta.5（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.6（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
 
 ## 一个工作台，容纳常用日常
 
@@ -32,11 +32,11 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 ### 内置工具，点击即用
 
-快捷启动面板内置取色器与色板、文本和图片剪贴板历史、二维码生成与识别、文本工具箱、悬浮文本和时间戳工具。支持中文名称与英文关键词搜索，例如 `color picker`、`clipboard`、`qrcode`。工具以独立窗口打开，可置顶；色板和悬浮文本保存在本机。
+快捷启动面板内置取色器与色板、文本和图片剪贴板历史、二维码生成与识别、文本工具箱、悬浮文本、时间戳和日历工具。支持中文名称与英文关键词搜索，例如 `color picker`、`clipboard`、`qrcode`。工具以独立窗口打开，可置顶；色板和悬浮文本保存在本机。
 
 ## 下载与开始使用
 
-前往 [GitHub Releases](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.5) 下载 Windows x64 安装包，运行安装程序后即可开始使用。快捷启动默认快捷键为 `Alt + Space`，可以在设置中修改。
+前往 [GitHub Releases](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.6) 下载 Windows x64 安装包，运行安装程序后即可开始使用。快捷启动默认快捷键为 `Alt + Space`，可以在设置中修改。
 
 Beta 版本可通过 GitHub Release 安装包手动安装和更新，也可在“设置 → 关于”检查更新；在线更新需要对应版本的签名安装包和更新清单可用。更新内容请查看[更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog)。
 

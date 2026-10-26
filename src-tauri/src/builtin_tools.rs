@@ -12,12 +12,12 @@ pub struct ClipboardState { entries: Mutex<Vec<Clip>>, paused: AtomicBool, acces
 #[tauri::command]
 // WebView2 creation must run outside the synchronous IPC/main-thread handler on Windows.
 pub async fn open_builtin_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let title = match id.as_str() { "color"=>"取色器 + 色板", "clipboard"=>"剪贴板", "qrcode"=>"二维码工具", "text"=>"文本工具箱", "floating"=>"悬浮文本", "timestamp"=>"时间戳工具", _=>return Err("未知工具".into()) };
+    let title = match id.as_str() { "calendar"=>"日历", "color"=>"取色器 + 色板", "clipboard"=>"剪贴板", "qrcode"=>"二维码工具", "text"=>"文本工具箱", "floating"=>"悬浮文本", "timestamp"=>"时间戳工具", _=>return Err("未知工具".into()) };
     let label = format!("tool-{id}");
     if let Some(w) = app.get_webview_window(&label) { w.unminimize().map_err(|e|e.to_string())?; w.show().map_err(|e|e.to_string())?; return w.set_focus().map_err(|e|e.to_string()); }
     let floating = id == "floating";
     tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(format!("index.html?tool={id}").into()))
-        .title(title).inner_size(if floating {420.} else {800.}, if floating {360.} else {650.})
+        .title(title).inner_size(if floating {420.} else if id == "calendar" {1040.} else {800.}, if floating {360.} else if id == "calendar" {760.} else {650.})
         .min_inner_size(360., 300.).decorations(false).always_on_top(floating).build().map_err(|e|e.to_string())?;
     Ok(())
 }

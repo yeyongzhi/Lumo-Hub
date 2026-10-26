@@ -1,7 +1,7 @@
 {
   "name": "lumo-hub",
   "private": true,
-  "version": "0.0.1-beta.5",
+  "version": "0.0.1-beta.6",
   "type": "module",
   "packageManager": "pnpm@10.4.1",
   "scripts": {
@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4",
     "jsqr": "^1.4.0",
+    "lunar-typescript": "^1.8.6",
     "markdown-it": "^14",
     "pinia": "^3",
     "qrcode": "^1.5.4",

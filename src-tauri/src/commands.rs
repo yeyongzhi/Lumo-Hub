@@ -926,11 +926,11 @@ pub fn launch_resource(app: tauri::AppHandle, state: State<'_, AppState>, id: St
     ))?;
     drop(db);
     validate_resource(&kind, &target)?;
-    if kind == "web" {
+    if kind == "web" || (kind == "app" && app_scan::apps_folder_id(&target).is_some()) {
         Command::new("explorer.exe")
             .arg(target)
             .spawn()
-            .map_err(|e| format!("无法打开网页：{e}"))?;
+            .map_err(|e| format!("无法打开应用或网页：{e}"))?;
     } else {
         let path = Path::new(&target);
         if !path.exists() {
@@ -977,7 +977,7 @@ pub fn relocate_resource(
         }),
     )?;
     validate_resource(&kind, &target)?;
-    if kind != "web" && !Path::new(&target).exists() {
+    if kind != "web" && app_scan::apps_folder_id(&target).is_none() && !Path::new(&target).exists() {
         return Err("所选路径不存在。".into());
     }
     let icon_path = if kind != "web" { save_resource_icon(&data_dir, &target)? } else { None };

@@ -9,7 +9,39 @@ pub struct Shortcut {
     pub arguments: String,
 }
 
+/// Only accept AppsFolder targets, never arbitrary shell commands or namespaces.
+pub fn apps_folder_id(target: &str) -> Option<&str> {
+    const PREFIX: &str = "shell:AppsFolder\\";
+    let prefix = target.get(..PREFIX.len())?;
+    if !prefix.eq_ignore_ascii_case(PREFIX) { return None; }
+    let id = &target[PREFIX.len()..];
+    if id.is_empty() || id.chars().any(|c| c.is_control() || matches!(c, '\\' | '/' | '"' | '<' | '>' | '|')) { return None; }
+    Some(id)
+}
+
+#[cfg(windows)]
+#[derive(serde::Deserialize)]
+struct WindowsApp { name: String, app_id: String, target: String }
+
+#[cfg(windows)]
+fn windows_apps() -> Result<Vec<WindowsApp>, String> {
+    use std::{os::windows::process::CommandExt, process::Command};
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", include_str!("scan_windows_apps.ps1")])
+        .creation_flags(0x08000000).output().map_err(|e|format!("无法扫描 Windows 应用：{e}"))?;
+    if !output.status.success() { return Err(format!("无法读取 Windows 应用列表：{}", String::from_utf8_lossy(&output.stderr).trim())); }
+    serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim().trim_start_matches('\u{feff}')).map_err(|e|format!("Windows 应用列表格式无效：{e}"))
+}
+
+pub fn registered_shell_targets() -> Result<HashSet<String>, String> {
+    #[cfg(windows)]
+    { Ok(windows_apps()?.into_iter().filter(|item| !item.app_id.is_empty()).map(|item|path_key(&format!("shell:AppsFolder\\{}",item.app_id))).collect()) }
+    #[cfg(not(windows))]
+    { Ok(HashSet::new()) }
+}
+
 pub fn path_key(path: &str) -> String {
+    if let Some(id) = apps_folder_id(path) { return format!("shell:appsfolder\\{}", id.to_lowercase()); }
     let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
     canonical.to_string_lossy().trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
 }
@@ -81,17 +113,46 @@ pub fn scan() -> Result<Vec<ScanCandidate>, String> {
     for (path, source) in entries {
         let Some(link) = links.get(&path_key(&path)).filter(|link| !link.target.is_empty() && Path::new(&link.target).is_file()) else { continue; };
         if !Path::new(&link.target).extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) { continue; }
-        if !link.arguments.trim().is_empty() || !seen.insert(path_key(&link.target)) { continue; }
+        let target=if link.arguments.trim().is_empty() {link.target.clone()} else {path.clone()};
+        if !seen.insert(path_key(&target)) { continue; }
         let name = Path::new(&path).file_stem().unwrap_or_default().to_string_lossy().into_owned();
         if is_helper(&name) { continue; }
         installed.insert((path_key(&link.target), app_name_key(&name)));
         let icon = app_icon::extract_icon_png(Path::new(&link.target)).or_else(|| app_icon::extract_icon_png(Path::new(&path)));
-        candidates.push(ScanCandidate { imported: false, category: category(&name, &link.target), name, target: link.target.clone(), kind: "app".into(), source: source.into(), icon_data: icon.map(|bytes| app_icon::data_url(&bytes)), installation_path: Path::new(&link.target).parent().map(|dir| dir.to_string_lossy().into_owned()) });
+        candidates.push(ScanCandidate { imported: false, category: category(&name, &link.target), name, target, kind: "app".into(), source: source.into(), icon_data: icon.map(|bytes| app_icon::data_url(&bytes)), installation_path: Path::new(&link.target).parent().map(|dir| dir.to_string_lossy().into_owned()) });
     }
     #[cfg(windows)]
     for item in registry_candidates() {
         if installed.contains(&(path_key(&item.target), app_name_key(&item.name))) || !seen.insert(path_key(&item.target)) { continue; }
         candidates.push(item);
+    }
+    #[cfg(windows)]
+    {
+        let apps=windows_apps()?;
+        let shell_links=resolve_shortcuts(&apps.iter().map(|item|item.target.clone()).collect::<Vec<_>>())?;
+        for item in apps {
+            if item.name.trim().is_empty() || is_helper(&item.name) { continue; }
+            let resolved=shell_links.get(&path_key(&item.target)).map(|link|link.target.as_str()).unwrap_or(&item.target);
+            let file=Path::new(resolved);
+            let target=if item.app_id.contains('!') {
+                format!("shell:AppsFolder\\{}",item.app_id)
+            } else if file.is_file() && file.extension().is_some_and(|ext|ext.eq_ignore_ascii_case("exe")) {
+                resolved.to_string()
+            } else if !item.app_id.is_empty() {
+                format!("shell:AppsFolder\\{}",item.app_id)
+            } else { continue; };
+            // The StartApps fallback is needed for packaged apps, but desktop IDs
+            // without a resolved executable duplicate the existing shortcut scan.
+            if item.target.is_empty() && !item.app_id.contains('!') { continue; }
+            if !seen.insert(path_key(&target)) { continue; }
+            let shell=apps_folder_id(&target).is_some();
+            if target.starts_with("shell:") && !shell { continue; }
+            let category=if shell && (item.app_id.starts_with("Microsoft.Windows") || item.app_id.starts_with("windows.")) { "system".into() } else { category(&item.name,&target) };
+            candidates.push(ScanCandidate { imported:false, name:item.name, category, kind:"app".into(),
+                icon_data:app_icon::extract_icon_png(Path::new(&target)).map(|bytes|app_icon::data_url(&bytes)),
+                installation_path:if shell {None} else {file.parent().map(|path|path.to_string_lossy().into_owned())},
+                source:if shell {"Windows 应用列表（商店 / 打包应用）".into()} else {"Windows 应用列表".into()}, target });
+        }
     }
     candidates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(candidates)
@@ -150,6 +211,15 @@ pub fn publishers(_resources:Vec<(String,String)>)->Result<HashMap<String,String
 mod tests {
     use super::*;
     #[test]
+    fn shell_targets_have_stable_identity_and_reject_invalid_namespaces() {
+        let links=HashMap::new();
+        assert_eq!(identity("shell:AppsFolder\\Example.App_123!App",&links),identity("SHELL:APPSFOLDER\\example.app_123!app",&links));
+        assert!(apps_folder_id("shell:AppsFolder\\Example.App_123!App").is_some());
+        for target in ["shell:AppsFolder\\", "shell:Other\\App", "shell:AppsFolder\\App\\file", "shell:AppsFolder\\App\n"] {
+            assert!(apps_folder_id(target).is_none());
+        }
+    }
+    #[test]
     fn shortcuts_to_same_program_merge_but_arguments_remain_distinct() {
         let a = "C:/Start/A.lnk"; let b = "C:/Other/A.lnk";
         let mut links = HashMap::from([
@@ -189,10 +259,16 @@ mod tests {
         let links = resolve_shortcuts(&candidates.iter().map(|item| item.target.clone()).collect::<Vec<_>>()).unwrap();
         let mut identities = HashSet::new();
         for item in &candidates {
-            assert!(Path::new(&item.target).extension().is_some_and(|ext|ext.eq_ignore_ascii_case("exe")));
+            assert!(apps_folder_id(&item.target).is_some() || Path::new(&item.target).extension().is_some_and(|ext|ext.eq_ignore_ascii_case("exe")||ext.eq_ignore_ascii_case("lnk")), "无效入口：{} {}",item.name,item.target);
             assert!(identities.insert(identity(&item.target, &links)), "重复扫描项：{}", item.name);
-            assert!(item.installation_path.as_deref().is_some_and(|value| !value.is_empty()));
+            assert!(apps_folder_id(&item.target).is_some() || item.installation_path.as_deref().is_some_and(|value| !value.is_empty()));
         }
+        let packaged=windows_apps().unwrap().into_iter().filter(|item|item.app_id.contains('!')&&!is_helper(&item.name)).map(|item|path_key(&format!("shell:AppsFolder\\{}",item.app_id))).collect::<HashSet<_>>();
+        let scanned=candidates.iter().map(|item|path_key(&item.target)).collect::<HashSet<_>>();
+        assert!(packaged.is_subset(&scanned), "商店应用存在漏扫");
+        let shell_candidates=candidates.iter().filter(|item|apps_folder_id(&item.target).is_some()).collect::<Vec<_>>();
+        assert!(shell_candidates.iter().all(|item|item.icon_data.is_some()), "商店应用图标缺失");
+        println!("已覆盖全部 {} 个已注册商店 / 打包应用入口",packaged.len());
         let companies=publishers(candidates.iter().map(|item|(item.target.clone(),item.target.clone())).collect()).unwrap();
         assert!(!companies.is_empty(), "未读取到任何程序开发者信息");
         println!("已读取 {} 个程序的开发者信息",companies.len());

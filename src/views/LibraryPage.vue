@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { cn } from '@/lib/utils'
 import { fixedResourceIds } from '@/lib/launcher-preferences'
 import LibraryManagement from '@/components/LibraryManagement.vue'
 import GroupManagement from '@/components/GroupManagement.vue'
@@ -94,7 +95,7 @@ function allOrderedIds(){return [...new Set([...(sortMode.value==='custom'?custo
 async function moveTile(id:string,direction:number){const visible=shownResources.value.map(i=>i.id),target=visible[visible.indexOf(id)+direction];if(!target)return;const ids=allOrderedIds();const from=ids.indexOf(id),to=ids.indexOf(target);[ids[from],ids[to]]=[ids[to]!,ids[from]!];try{await saveOrder(ids)}catch(e){store.notify(String(e))}}
 async function resourcePointerUp(event:PointerEvent){const dragged=draggedResource;const order=previewOrder.value;const target=document.elementFromPoint(event.clientX,event.clientY);const group=target?.closest<HTMLElement>('[data-resource-group]');cancelResourceDrag();if(!dragged?.active)return;try{if(group){await api.moveResource(dragged.id,group.dataset.resourceGroup||null);await store.reload();return}const id=target?.closest<HTMLElement>('[data-resource-tile]')?.dataset.resourceTile;if(id&&id!==dragged.id&&order)await saveOrder(order)}catch(e){store.notify(String(e))}}
 function cancelResourceDrag(){draggedResource=null;draggingTile.value='';tileDrop.value='';groupDrop.value='';previewOrder.value=null}
-onMounted(async()=>{window.addEventListener('pointermove',resourcePointerMove);window.addEventListener('pointerup',resourcePointerUp);window.addEventListener('blur',cancelResourceDrag);window.addEventListener('pointercancel',cancelResourceDrag);try{const stop=await getCurrentWindow().onDragDropEvent(({payload})=>{dropHint.value=payload.type==='enter'||payload.type==='over';if(payload.type==='drop')void previewPaths(payload.paths)});stopDrop=stop}catch{}})
+onMounted(async()=>{window.addEventListener('pointermove',resourcePointerMove);window.addEventListener('pointerup',resourcePointerUp);window.addEventListener('blur',cancelResourceDrag);window.addEventListener('pointercancel',cancelResourceDrag);try{const stop=await getCurrentWindow().onDragDropEvent(({payload})=>{dropHint.value=payload.type==='enter'||payload.type==='over';if(payload.type==='drop'){if(showForm.value)void fillFormFromDrop(payload.paths);else void previewPaths(payload.paths)}});stopDrop=stop}catch{}})
 onUnmounted(()=>{stopDrop?.();window.removeEventListener('pointermove',resourcePointerMove);window.removeEventListener('pointerup',resourcePointerUp);window.removeEventListener('blur',cancelResourceDrag);window.removeEventListener('pointercancel',cancelResourceDrag)})
 async function refreshHealth(){try{resourceHealth.value=await api.resourceHealth()}catch(e){store.notify(String(e))}}
 const showForm=ref(false)
@@ -161,9 +162,26 @@ onMounted(()=>window.addEventListener('lumo-new',newLibraryItem))
 onUnmounted(()=>window.removeEventListener('lumo-new',newLibraryItem))
 function edit(item:Resource){editingId.value=item.id;form.name=item.name;form.kind=item.kind;form.target=item.target;form.group_id=item.group_id??'';form.aliases=item.aliases;const options=launchOptions(store.settings.client,item.id);argumentsText.value=options.arguments.join('\n');workingDirectory.value=options.working_directory;customIcon.value=options.icon_data;allowDuplicate.value=false;showForm.value=true}
 async function locateDuplicate(){const id=duplicate.value?.id;if(!id)return;clearForm();query.value='';activeFilter.value='all';focusedId.value=id;await nextTick();document.getElementById(`resource-${id}`)?.scrollIntoView({block:'center',behavior:'smooth'})}
+const formTargetBusy=ref(false)
+let formTargetRequest=0
+watch(showForm,()=>{formTargetRequest++;formTargetBusy.value=false;dropHint.value=false})
+async function fillFormFromDrop(paths:string[]){
+  if(formSaving.value||formTargetBusy.value)return
+  if(paths.length!==1){store.notify('此表单一次添加一个启动项；批量添加请关闭弹窗后拖入应用库。');return}
+  const request=++formTargetRequest
+  formTargetBusy.value=true
+  try{
+    const [item]=await api.previewTargets(paths)
+    if(!item||request!==formTargetRequest||!showForm.value)return
+    form.target=item.target;form.kind=item.kind
+    if(!form.name.trim())form.name=item.name
+    argumentsText.value='';workingDirectory.value='';customIcon.value=null;allowDuplicate.value=false
+  }catch(e){if(request===formTargetRequest)store.notify(`无法读取拖入的目标：${String(e)}`)}
+  finally{if(request===formTargetRequest)formTargetBusy.value=false}
+}
 async function pickTarget(){const result=await open({multiple:false,directory:false,filters:form.kind==='app'?[{name:'应用程序或快捷方式',extensions:['exe','lnk']}]:undefined});if(typeof result==='string'){try{const [item]=await api.previewTargets([result]);if(item){form.target=item.target;form.kind=item.kind;if(!form.name.trim())form.name=item.name}}catch(e){store.notify(String(e))}}}
 async function save(){
-  if(formSaving.value)return
+  if(formSaving.value||formTargetBusy.value)return
   if(!form.name.trim()||!form.target.trim()){store.notify('请填写名称和启动目标');return}
   formSaving.value=true
   try{
@@ -187,26 +205,26 @@ function iconFor(kind:ResourceKind){return kind==='app'?AppWindow:kind==='web'?G
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden" @dragover.prevent @drop.prevent="dropText"><LibraryManagement v-model:open="organizerOpen" :health="resourceHealth" @relocate="relocate" @refresh="refreshHealth"/><GroupManagement v-model:open="groupManagerOpen"/><p v-if="dropHint" role="status" class="rounded-lg bg-primary/10 p-3 text-sm text-primary">松开以预览并添加文件或应用</p><Dialog v-model:open="showDrop"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>添加拖入的启动项</DialogTitle><DialogDescription>勾选需要添加的项目；已存在的目标默认跳过。</DialogDescription></DialogHeader><div class="min-h-0 overflow-y-auto"><label v-for="item in dropPreview" :key="item.target" class="flex items-center gap-3 py-2"><Checkbox v-model="item.selected" :disabled="dropBusy"/><img v-if="item.icon_data" :src="item.icon_data" class="size-8 object-contain" alt=""/><span class="min-w-0 flex-1"><span class="block truncate">{{ item.name }}</span><span class="block truncate text-xs text-muted-foreground">{{ item.target }}</span></span></label></div><DialogFooter><Button variant="outline" :disabled="dropBusy" @click="showDrop=false">取消</Button><Button :disabled="dropBusy||!dropPreview.some(i=>i.selected)" @click="importDrop">{{ dropBusy?'正在添加…':'添加所选' }}</Button></DialogFooter></DialogContent></Dialog>
+  <div class="flex h-full min-h-0 flex-1 flex-col overflow-hidden" @dragover.prevent @drop.prevent="dropText"><LibraryManagement v-model:open="organizerOpen" :health="resourceHealth" @relocate="relocate" @refresh="refreshHealth"/><GroupManagement v-model:open="groupManagerOpen"/><p v-if="dropHint&&!showForm" role="status" class="rounded-lg bg-primary/10 p-3 text-sm text-primary">松开以预览并添加文件或应用</p><Dialog v-model:open="showDrop"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>添加拖入的启动项</DialogTitle><DialogDescription>勾选需要添加的项目；已存在的目标默认跳过。</DialogDescription></DialogHeader><div class="min-h-0 overflow-y-auto"><label v-for="item in dropPreview" :key="item.target" class="flex items-center gap-3 py-2"><Checkbox v-model="item.selected" :disabled="dropBusy"/><img v-if="item.icon_data" :src="item.icon_data" class="size-8 object-contain" alt=""/><span class="min-w-0 flex-1"><span class="block truncate">{{ item.name }}</span><span class="block truncate text-xs text-muted-foreground">{{ item.target }}</span></span></label></div><DialogFooter><Button variant="outline" :disabled="dropBusy" @click="showDrop=false">取消</Button><Button :disabled="dropBusy||!dropPreview.some(i=>i.selected)" @click="importDrop">{{ dropBusy?'正在添加…':'添加所选' }}</Button></DialogFooter></DialogContent></Dialog>
     <Dialog v-model:open="commonDialogOpen"><DialogContent class="flex max-h-[85dvh] flex-col"><DialogHeader><DialogTitle>配置系统启动项</DialogTitle><DialogDescription>开启的项目显示在「全部」和「系统启动项」中，修改后自动保存。</DialogDescription></DialogHeader><FieldGroup class="min-h-0 gap-3 overflow-y-auto p-1"><Field orientation="horizontal"><FieldLabel for="common-all">全部开启 / 全部关闭</FieldLabel><Switch id="common-all" :model-value="allCommonEnabled" :disabled="commonSaving" @update:model-value="setAllCommon" /></Field><Field v-for="item in commonLaunchers" :key="item.id" orientation="horizontal"><FieldLabel :for="`common-${item.id}`"><img v-if="commonIcons[item.id]" :src="commonIcons[item.id]" alt="" class="size-5 shrink-0 object-contain" /><component :is="item.icon" v-else class="size-5 shrink-0" />{{ item.name }}</FieldLabel><Switch :id="`common-${item.id}`" :model-value="enabledCommon.some(x=>x.id===item.id)" :disabled="commonSaving" @update:model-value="value=>setCommon(item.id,value)" /></Field></FieldGroup></DialogContent></Dialog>
     <Dialog :open="showForm" @update:open="value=>{if(!value&&!formSaving)clearForm()}"><DialogContent class="flex max-h-[85dvh] flex-col sm:max-w-xl">
       <DialogHeader><DialogTitle>{{ editingId?'编辑启动项':'添加启动项' }}</DialogTitle><DialogDescription>填写启动项信息，将应用、网页或文件添加到应用库。</DialogDescription></DialogHeader>
       <form class="flex min-h-0 flex-col gap-5" @submit.prevent="save">
-      <fieldset :disabled="formSaving" class="min-h-0 overflow-y-auto p-1"><FieldGroup>
+      <fieldset :disabled="formSaving||formTargetBusy" class="min-h-0 overflow-y-auto p-1"><FieldGroup>
         <Field><FieldLabel for="resource-name">名称</FieldLabel><Input id="resource-name" v-model="form.name" placeholder="例如：浏览器、项目文件" /></Field>
         <Field><FieldLabel for="resource-kind">类型</FieldLabel><Select v-model="form.kind"><SelectTrigger id="resource-kind" class="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="app">应用</SelectItem><SelectItem value="web">网页</SelectItem><SelectItem value="file">文件</SelectItem></SelectGroup></SelectContent></Select></Field>
-        <Field><FieldLabel for="resource-target">{{ form.kind==='web'?'网址':'程序或文件路径' }}</FieldLabel><div class="flex gap-2"><Input id="resource-target" v-model="form.target" :placeholder="form.kind==='web'?'https://example.com':'选择或输入本地路径'" /><Button v-if="form.kind!=='web'" type="button" variant="outline" @click="pickTarget">浏览</Button></div></Field>
+        <Field :class="cn('rounded-xl transition-colors',dropHint&&'bg-primary/10 ring-2 ring-primary ring-offset-4 ring-offset-background')"><FieldLabel for="resource-target">{{ form.kind==='web'?'网址':'程序或文件路径' }}</FieldLabel><div class="flex gap-2"><Input id="resource-target" v-model="form.target" :placeholder="form.kind==='web'?'https://example.com':'拖入应用、快捷方式或文件，或输入路径'" /><Button v-if="form.kind!=='web'" type="button" variant="outline" @click="pickTarget">浏览</Button></div><p role="status" class="text-xs text-muted-foreground">{{ formTargetBusy?'正在读取拖入的目标…':dropHint?'松开即可填入启动项信息':'支持拖入单个应用、快捷方式、文件或文件夹，自动识别名称和类型。' }}</p></Field>
         <Field><FieldLabel for="resource-aliases">搜索别名</FieldLabel><Input id="resource-aliases" v-model="form.aliases" placeholder="例如：浏览器 chrome 谷歌" /></Field>
         <Field><FieldLabel for="resource-group">分组</FieldLabel><Select :model-value="form.group_id || 'ungrouped'" @update:model-value="value=>form.group_id=String(value)==='ungrouped'?'':String(value)"><SelectTrigger id="resource-group" class="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="ungrouped">未分组</SelectItem><SelectItem v-for="group in store.groups" :key="group.id" :value="group.id">{{ group.name }}</SelectItem></SelectGroup></SelectContent></Select></Field>
         <Field><FieldLabel>自定义图标</FieldLabel><div class="flex items-center gap-2"><img v-if="customIcon" :src="customIcon" alt="" class="size-10 object-contain"/><Button type="button" variant="outline" @click="chooseIcon">选择 PNG</Button><Button type="button" variant="ghost" @click="customIcon=null">恢复默认</Button></div></Field>
         <details v-if="form.kind==='app'&&/\.exe$/i.test(form.target)" class="text-sm"><summary>高级启动选项</summary><FieldGroup class="mt-3"><Field><FieldLabel for="launch-arguments">启动参数（每行一个参数，不需要外层引号）</FieldLabel><Textarea id="launch-arguments" v-model="argumentsText" placeholder="--profile&#10;work"/></Field><Field><FieldLabel for="working-directory">工作目录</FieldLabel><div class="flex gap-2"><Input id="working-directory" v-model="workingDirectory"/><Button type="button" variant="outline" @click="chooseWorkingDirectory">浏览</Button></div></Field></FieldGroup></details>
         <div v-if="duplicate" class="flex flex-col gap-2 text-sm"><p>已存在：{{ duplicate.name }}</p><Button type="button" variant="outline" @click="locateDuplicate">定位已有记录</Button><label class="flex items-center gap-2"><Checkbox v-model="allowDuplicate"/>创建另一个入口</label></div>
       </FieldGroup></fieldset>
-      <DialogFooter class="shrink-0"><Button type="button" variant="outline" :disabled="formSaving" @click="clearForm">取消</Button><Button type="submit" :disabled="formSaving">{{ formSaving?'保存中…':'保存启动项' }}</Button></DialogFooter>
+      <DialogFooter class="shrink-0"><Button type="button" variant="outline" :disabled="formSaving" @click="clearForm">取消</Button><Button type="submit" :disabled="formSaving||formTargetBusy">{{ formSaving?'保存中…':'保存启动项' }}</Button></DialogFooter>
       </form>
     </DialogContent></Dialog>
     <Dialog v-model:open="showScan"><DialogContent class="flex max-h-[85dvh] flex-col sm:max-w-3xl">
-      <DialogHeader><DialogTitle>扫描本机应用</DialogTitle><DialogDescription>识别本机程序并按程序路径去重，只导入勾选的应用。</DialogDescription></DialogHeader>
+      <DialogHeader><DialogTitle>扫描本机应用</DialogTitle><DialogDescription>扫描开始菜单、已安装程序和微软商店应用，按启动入口去重，只导入勾选的应用。</DialogDescription></DialogHeader>
       <Tabs v-if="!scanBusy" v-model="scanCategory" class="shrink-0"><TabsList class="h-auto flex-wrap" aria-label="扫描应用分类"><TabsTrigger v-for="category in scanCategories" :key="category.id" :value="category.id">{{ category.label }} · {{ candidates.filter(item=>category.id==='all'||item.category===category.id).length }}</TabsTrigger></TabsList></Tabs>
       <Field v-if="!scanBusy" orientation="horizontal"><Checkbox id="show-imported" v-model="showImported" /><FieldLabel for="show-imported">显示已添加的应用（{{ candidates.filter(item=>item.imported).length }}）</FieldLabel></Field>
       <Input v-if="!scanBusy" v-model="scanQuery" class="shrink-0" placeholder="搜索应用名称" aria-label="搜索扫描到的应用名称" />
