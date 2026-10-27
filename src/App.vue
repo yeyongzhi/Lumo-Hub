@@ -210,7 +210,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
   </main>
   <div v-else class="flex h-dvh flex-col overflow-hidden bg-background">
       <header class="relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 py-2 backdrop-blur" @mousedown="startWindowDrag">
-        <div class="flex shrink-0 items-center gap-2" data-no-drag>
+        <div class="flex min-w-0 flex-1 items-center gap-2">
           <div class="flex items-center pr-2"><img src="/brand/lumohub.png" alt="LumoHub" class="size-8 shrink-0 object-contain" /></div>
           <nav class="flex items-center gap-0.5" aria-label="快捷菜单">
             <DropdownMenu><DropdownMenuTrigger as-child><Button variant="ghost" class="h-8 px-2 text-sm">文件</Button></DropdownMenuTrigger><DropdownMenuContent align="start" class="w-52"><DropdownMenuItem @click="newItem"><Plus data-icon="inline-start"/>新建 / 快速记录<kbd class="ml-auto text-xs text-muted-foreground">Ctrl N</kbd></DropdownMenuItem><DropdownMenuItem @click="store.flushPendingSaves().then(()=>store.notify('已保存')).catch(e=>store.notify(String(e)))"><BookOpenText data-icon="inline-start"/>保存当前内容<kbd class="ml-auto text-xs text-muted-foreground">Ctrl S</kbd></DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem @click="navigate('settings')"><Settings data-icon="inline-start"/>设置</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
@@ -218,7 +218,6 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
             <DropdownMenu><DropdownMenuTrigger as-child><Button variant="ghost" class="h-8 px-2 text-sm">帮助</Button></DropdownMenuTrigger><DropdownMenuContent align="start" class="w-44"><DropdownMenuItem @click="shortcutsOpen=true"><BookOpenText data-icon="inline-start"/>快捷键说明</DropdownMenuItem><DropdownMenuItem @click="navigate('settings')"><Settings data-icon="inline-start"/>设置</DropdownMenuItem><DropdownMenuItem @click="openAbout()"><CircleHelp data-icon="inline-start"/>关于</DropdownMenuItem><DropdownMenuItem @click="openAbout(true)"><RefreshCw data-icon="inline-start"/>检查更新</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
           </nav>
         </div>
-        <div class="min-w-0 flex-1"></div>
         <div class="relative flex w-full max-w-xl flex-1 items-center" data-no-drag>
           <Search class="pointer-events-none absolute left-3 size-4 text-muted-foreground" /><Input v-model="search" class="h-10 border-border bg-card pl-10 pr-10" placeholder="搜索应用、笔记、便签、倒数日…" aria-label="全局搜索" @focus="searchOpen=!!search.trim()" @keydown="handleSearchKeydown" />
           <div v-if="searchOpen&&search.trim()" class="absolute left-0 right-0 top-12 max-h-[70dvh] overflow-y-auto rounded-2xl border border-border bg-popover shadow-xl">
@@ -227,12 +226,12 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
             <div class="border-t border-border px-4 py-2 text-[0.6875rem] text-muted-foreground">本地搜索 · 搜索结果仅保存在此设备</div>
           </div>
         </div>
-        <div class="flex min-w-0 flex-1 items-center justify-end gap-1" data-no-drag><Button variant="ghost" size="icon-sm" aria-label="刷新" title="刷新" @click="reloadPage"><RefreshCw /></Button><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" title="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><Button variant="ghost" size="icon-sm" aria-label="设置" title="设置" :aria-pressed="page==='settings'" @click="navigate('settings')"><Settings/></Button><WindowControls /></div>
+        <div class="flex min-w-0 flex-1 items-center justify-end gap-1"><Button variant="ghost" size="icon-sm" aria-label="刷新" title="刷新" @click="reloadPage"><RefreshCw /></Button><Button variant="ghost" size="icon-sm" aria-label="快捷键说明" title="快捷键说明" @click="shortcutsOpen=true"><BookOpenText/></Button><Button variant="ghost" size="icon-sm" aria-label="设置" title="设置" :aria-pressed="page==='settings'" @click="navigate('settings')"><Settings/></Button><WindowControls /></div>
       </header>
       <div class="flex min-h-0 flex-1 overflow-hidden">
 
     <aside class="relative flex shrink-0 flex-col border-r border-border bg-card/70" :class="sidebarDragWidth===null?'transition-[width] duration-200':'select-none'" :style="{width:sidebarCollapsed?'4.5rem':`${sidebarWidth}px`}">
-      <div v-if="!sidebarCollapsed" role="separator" aria-label="调整侧边栏宽度" aria-orientation="vertical" :aria-valuenow="sidebarWidth" :aria-valuemin="100" :aria-valuemax="280" tabindex="0" title="拖动调整侧边栏宽度" class="absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20 focus-visible:outline-none" @pointerdown="startSidebarResize" @pointermove="resizeSidebar" @pointerup="finishSidebarResize" @pointercancel="finishSidebarResize" @lostpointercapture="finishSidebarResize" @keydown="resizeSidebarWithKeyboard" />
+      <div v-if="!sidebarCollapsed" role="separator" aria-label="调整侧边栏宽度" aria-orientation="vertical" :aria-valuenow="sidebarWidth" :aria-valuemin="100" :aria-valuemax="280" tabindex="0" title="拖动调整侧边栏宽度" class="absolute inset-y-0 -right-1 z-30 w-2 cursor-col-resize touch-none focus-visible:outline-none after:absolute after:inset-y-0 after:left-1/2 after:border-l after:border-dashed after:border-transparent hover:after:border-primary focus-visible:after:border-primary" :class="sidebarDragWidth!==null?'after:border-primary':''" @pointerdown="startSidebarResize" @pointermove="resizeSidebar" @pointerup="finishSidebarResize" @pointercancel="finishSidebarResize" @lostpointercapture="finishSidebarResize" @keydown="resizeSidebarWithKeyboard" />
       <nav class="flex flex-col gap-1 py-3" :class="sidebarCollapsed?'px-2':narrowSidebar?'px-1':'px-3'" aria-label="主导航">
         <Button v-for="item in nav" :key="item.id" variant="ghost" class="h-11 rounded-xl text-sm" :class="[sidebarCollapsed?'w-full justify-center px-0':narrowSidebar?'w-full justify-start gap-1 px-1':'w-full justify-start gap-3 px-3',page===item.id?'bg-primary/10 font-semibold text-primary':'text-muted-foreground']" :aria-label="sidebarCollapsed?item.label:undefined" :title="sidebarCollapsed?item.label:undefined" @click="navigate(item.id)"><component :is="item.icon" /><span v-if="!sidebarCollapsed" class="truncate">{{ item.label }}</span></Button>
       </nav>
@@ -245,7 +244,7 @@ onUnmounted(()=>{window.removeEventListener('keydown',keyboard);extraListeners.f
 
     <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-      <main :key="page" class="min-h-0 flex-1 px-4 pt-4" :class="['notes','stickies','library','countdowns','settings'].includes(page)?'flex flex-col overflow-hidden pb-4':'overflow-y-auto overscroll-contain'">
+      <main :key="page" class="min-h-0 flex-1 px-4 pt-4" :class="page==='home'?'flex flex-col overflow-hidden':['notes','stickies','library','countdowns','settings'].includes(page)?'flex flex-col overflow-hidden pb-4':'overflow-y-auto overscroll-contain'">
         <component :is="currentView" v-bind="page==='settings'?{request:settingsRequest}:{}" @navigate="navigate" />
       </main>
     </section>

@@ -6,8 +6,8 @@
 
 ## 下载与安装
 
-1. 打开 [v0.0.1-beta.6 测试版发布页面](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.6)。
-2. 下载 `Lumo-Hub_0.0.1-beta.6_x64-setup.exe`，运行并按安装向导选择安装目录。
+1. 打开 [GitHub Releases 发布页面](https://github.com/yeyongzhi/Lumo-Hub/releases)。
+2. 下载对应版本的 Windows x64 安装包，运行并按安装向导选择安装目录。
 3. 首次启动完成欢迎页，按 `Alt + Space` 打开快捷启动面板。
 4. 搜索应用或内置工具，例如 `color picker`、`clipboard`、`timestamp`，按 Enter 或点击打开。
 

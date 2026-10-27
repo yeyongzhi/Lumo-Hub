@@ -1,6 +1,6 @@
 [package]
 name = "lumo-hub"
-version = "0.0.1-beta.6"
+version = "0.0.1-beta.7"
 description = "Lumo-Hub local productivity workspace"
 authors = ["you"]
 edition = "2021"

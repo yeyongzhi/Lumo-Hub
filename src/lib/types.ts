@@ -61,7 +61,7 @@ export interface ScanCandidate {
   installation_path: string | null
 }
 
-export type HomeWidgetKind = 'clock' | 'countdowns' | 'sticky' | 'note' | 'recent' | 'weather' | 'hitokoto' | 'news' | 'poetry'
+export type HomeWidgetKind = 'clock' | 'countdowns' | 'sticky' | 'note' | 'recent' | 'weather' | 'hitokoto' | 'news' | 'poetry' | 'library' | 'quick_launch' | 'quick_tools' | 'calendar' | 'time'
 export type HomeWidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '4x1'
 export interface HomeWidget { id: string; kind: HomeWidgetKind; size: HomeWidgetSize; selected_ids?: string[] }
 

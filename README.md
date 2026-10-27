@@ -6,9 +6,9 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 **本地优先 · 快捷启动 · 自定义工作台 · 便签与笔记**
 
-[产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.6)
+[产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
-> 当前代码版本：**0.0.1-beta.6（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.7（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
 
 ## 一个工作台，容纳常用日常
 
@@ -18,7 +18,7 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 ### 按自己的习惯整理首页
 
-添加或排列首页卡片，将时间、最近打开、便签、笔记、倒数日、天气和每日内容放在需要的位置。可选择简洁、工作或生活布局，并使用亮色或暗色主题。
+添加或排列首页卡片，将时间、日历、应用库、快捷启动、便签、笔记、倒数日、天气和每日内容放在需要的位置。可选择预设布局、保存个人布局，并使用亮色或暗色主题。
 
 ### 记录灵感与重要日期
 
@@ -36,7 +36,7 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 ## 下载与开始使用
 
-前往 [GitHub Releases](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.6) 下载 Windows x64 安装包，运行安装程序后即可开始使用。快捷启动默认快捷键为 `Alt + Space`，可以在设置中修改。
+前往 [GitHub Releases](https://github.com/yeyongzhi/Lumo-Hub/releases) 下载 Windows x64 安装包，运行安装程序后即可开始使用。快捷启动默认快捷键为 `Alt + Space`，可以在设置中修改。
 
 Beta 版本可通过 GitHub Release 安装包手动安装和更新，也可在“设置 → 关于”检查更新；在线更新需要对应版本的签名安装包和更新清单可用。更新内容请查看[更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog)。
 
