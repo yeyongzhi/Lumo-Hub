@@ -18,6 +18,7 @@ const currentDay=ref(new Date())
 let dayTimer:ReturnType<typeof setInterval>|undefined
 function networkChanged(){offline.value=!navigator.onLine;if(!offline.value)void load(true)}
 const newsAge=computed(()=>{if(props.kind!=='news'||!data.value?.date)return '';const today=new Date(currentDay.value.getFullYear(),currentDay.value.getMonth(),currentDay.value.getDate());const date=new Date(data.value.date+'T00:00:00');const days=Math.round((today.getTime()-date.getTime())/86400000);return days===1?'昨日新闻':days>1?'历史新闻':''})
+let disposed = false
 let version = 0
 const loadedAt = ref(0)
 watch(loadedAt, value => emit('updated', value ? new Date(value).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+' 更新' : ''))
@@ -31,7 +32,7 @@ async function readCache() {
   } catch { /* Invalid cache is replaced by the next successful request. */ }
 }
 async function load(force = false) {
-  if (loading.value) return
+  if (disposed || loading.value) return
   const lifetime = props.kind === 'weather' ? 30 * 60_000 : props.kind === 'news' ? 6 * 60 * 60_000 : 60 * 60_000
   const now = new Date()
   const today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
@@ -48,12 +49,28 @@ async function load(force = false) {
   finally { if (request === version) loading.value = false }
 }
 async function saveCity() {
-  city.value = cityDraft.value.trim(); await writeLocal('lumo-weather-city', city.value); changingCity.value = false
+  const nextCity=cityDraft.value.trim()
+  try { await writeLocal('lumo-weather-city',nextCity) }
+  catch(reason) { error.value=String(reason);return }
+  city.value=nextCity;changingCity.value=false
   version++; loading.value = false; await readCache(); void load(true)
 }
 watch(() => props.refreshKey, () => void load(true))
-onMounted(async () => {window.addEventListener('online',networkChanged);window.addEventListener('offline',networkChanged);dayTimer=setInterval(()=>{currentDay.value=new Date();void load()},60000);const savedCity=await readLocal<string>('lumo-weather-city');city.value=savedCity||'';cityDraft.value=city.value;changingCity.value=props.kind==='weather'&&savedCity===null;await readCache(); void load() })
-onBeforeUnmount(() => { version++;if(dayTimer)clearInterval(dayTimer);window.removeEventListener('online',networkChanged);window.removeEventListener('offline',networkChanged) })
+onMounted(async () => {
+  window.addEventListener('online',networkChanged);window.addEventListener('offline',networkChanged)
+  dayTimer=setInterval(()=>{currentDay.value=new Date();void load()},60000)
+  if(props.kind==='weather'){
+    try {
+      const savedCity=await readLocal<string>('lumo-weather-city')
+      if(disposed)return
+      city.value=typeof savedCity==='string'?savedCity:'';cityDraft.value=city.value
+      changingCity.value=savedCity===null
+    } catch { /* Location lookup still works without saved preferences. */ }
+  }
+  if(disposed)return
+  await readCache();void load()
+})
+onBeforeUnmount(() => { disposed=true;version++;if(dayTimer)clearInterval(dayTimer);window.removeEventListener('online',networkChanged);window.removeEventListener('offline',networkChanged) })
 </script>
 <template>
   <div class="flex flex-1 flex-col gap-2">
@@ -72,7 +89,7 @@ onBeforeUnmount(() => { version++;if(dayTimer)clearInterval(dayTimer);window.rem
       <ol class="flex flex-col gap-2"><li v-for="(line,index) in data.news" :key="index" class="flex items-start gap-3 text-sm leading-6"><span class="shrink-0 text-xs font-semibold leading-6 tabular-nums text-primary">{{ String(index+1).padStart(2,'0') }}</span><span class="min-w-0 break-words">{{ line }}</span></li></ol>
     </template>
     <template v-else-if="data">
-      <p class="whitespace-pre-wrap break-words leading-7" :class="[kind==='poetry'?'text-lg font-medium':'text-sm',size.endsWith('x2')?'my-auto':'']">{{ data.content }}</p>
+      <p class="whitespace-pre-wrap break-words text-sm leading-7" :class="size.endsWith('x2')?'my-auto':''">{{ data.content }}</p>
     </template>
     <p v-if="stale&&data" class="text-xs text-muted-foreground">上次更新：{{ new Date(loadedAt).toLocaleString('zh-CN') }} · 内容可能已过期</p><p v-if="loading" role="status" class="text-xs text-muted-foreground">{{ data?'正在刷新…':'正在获取内容…' }}</p>
     <details v-if="error" class="shrink-0 text-sm leading-6 text-muted-foreground"><summary class="cursor-pointer">{{ data?'暂时无法更新，已保留上次内容':'暂时无法获取内容' }} · 点击右上角重试</summary><p class="mt-1 break-words text-xs">{{ error }}</p></details>

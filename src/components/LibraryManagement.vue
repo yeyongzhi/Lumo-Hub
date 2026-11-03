@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '@/lib/api'
+import { useGroupOperations } from '@/lib/group-operations'
 import { useWorkspaceStore } from '@/stores/workspace'
 import type { LaunchScene, Resource } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -15,12 +16,13 @@ const props = defineProps<{ health: Record<string,boolean> }>()
 const emit = defineEmits<{ relocate: [item:Resource]; refresh: [] }>()
 const opened = defineModel<boolean>('open', { default: false })
 const store = useWorkspaceStore(), tab = ref('groups'), busy = ref(false)
+const groupOperations=useGroupOperations()
 const names = ref<Record<string,string>>({})
 let groupDrag:{id:string;pointer:number;x:number;y:number}|null=null
 const draggingGroup=ref(''), groupDrop=ref('')
 function startGroupDrag(event:PointerEvent,id:string){if(event.button!==0||busy.value)return;event.preventDefault();groupDrag={id,pointer:event.pointerId,x:event.clientX,y:event.clientY}}
 function groupPointerMove(event:PointerEvent){if(!groupDrag||event.pointerId!==groupDrag.pointer)return;if(Math.hypot(event.clientX-groupDrag.x,event.clientY-groupDrag.y)>5){draggingGroup.value=groupDrag.id;groupDrop.value=document.elementFromPoint(event.clientX,event.clientY)?.closest<HTMLElement>('[data-group-order]')?.dataset.groupOrder??''}}
-async function finishGroupDrag(event:PointerEvent){if(!groupDrag||event.pointerId!==groupDrag.pointer)return;const id=draggingGroup.value,target=groupDrop.value;cancelGroupDrag();if(!id||!target||id===target)return;await operation(async()=>{const ids=store.groups.map(g=>g.id).filter(i=>i!==id);ids.splice(ids.indexOf(target),0,id);await api.reorderGroups(ids);store.groups=await api.listGroups()})}
+async function finishGroupDrag(event:PointerEvent){if(!groupDrag||event.pointerId!==groupDrag.pointer)return;const id=draggingGroup.value,target=groupDrop.value;cancelGroupDrag();if(!id||!target||id===target)return;await operation(async()=>{const ids=store.groups.map(g=>g.id).filter(i=>i!==id);ids.splice(ids.indexOf(target),0,id);await groupOperations.reorder(ids)})}
 function cancelGroupDrag(){groupDrag=null;draggingGroup.value='';groupDrop.value=''}
 onMounted(()=>{window.addEventListener('pointermove',groupPointerMove);window.addEventListener('pointerup',finishGroupDrag);window.addEventListener('pointercancel',cancelGroupDrag);window.addEventListener('blur',cancelGroupDrag)})
 onUnmounted(()=>{window.removeEventListener('pointermove',groupPointerMove);window.removeEventListener('pointerup',finishGroupDrag);window.removeEventListener('pointercancel',cancelGroupDrag);window.removeEventListener('blur',cancelGroupDrag)})
@@ -29,9 +31,9 @@ const scenes = computed(() => (store.settings.client?.['lumo-launch-scenes'] as 
 const sceneId = ref(''), sceneName = ref(''), sceneResources = ref<string[]>([]), outcomes = ref<string[]>([])
 const invalid = computed(() => store.resources.filter(item=>props.health[item.id]===false))
 async function operation(fn:()=>Promise<unknown>) { if(busy.value)return;busy.value=true;try{await fn()}catch(e){store.notify(String(e))}finally{busy.value=false} }
-async function moveGroup(id:string,direction:number){await operation(async()=>{const ids=store.groups.map(g=>g.id);const from=ids.indexOf(id),to=from+direction;if(to<0||to>=ids.length)return;[ids[from],ids[to]]=[ids[to]!,ids[from]!];await api.reorderGroups(ids);store.groups=await api.listGroups()})}
-async function rename(id:string){await operation(async()=>{const name=names.value[id]?.trim();if(!name)return;await api.renameGroup(id,name);store.groups=await api.listGroups();delete names.value[id]})}
-async function removeGroup(id:string,name:string){if(!await askConfirmation(`删除“${name}”分组？启动项会保留并移到未分组。`))return;await operation(async()=>{await api.deleteGroup(id);await store.reload()})}
+async function moveGroup(id:string,direction:number){await operation(async()=>{const ids=store.groups.map(g=>g.id);const from=ids.indexOf(id),to=from+direction;if(to<0||to>=ids.length)return;[ids[from],ids[to]]=[ids[to]!,ids[from]!];await groupOperations.reorder(ids)})}
+async function rename(id:string){await operation(async()=>{const name=names.value[id]?.trim();if(!name)return;await groupOperations.rename(id,name);delete names.value[id]})}
+async function removeGroup(id:string,name:string){await operation(()=>groupOperations.remove(id,name))}
 function editScene(scene?:LaunchScene){sceneId.value=scene?.id??'';sceneName.value=scene?.name??'';sceneResources.value=[...(scene?.resource_ids??[])];outcomes.value=[]}
 async function saveScene(){await operation(async()=>{if(!sceneName.value.trim()||!sceneResources.value.length)return;const item={id:sceneId.value||crypto.randomUUID(),name:sceneName.value.trim(),resource_ids:[...sceneResources.value]};await store.saveClient('lumo-launch-scenes',[...scenes.value.filter(s=>s.id!==item.id),item]);editScene()})}
 async function removeScene(scene:LaunchScene){if(!await askConfirmation(`删除“${scene.name}”组合？原始启动项会保留。`))return;await operation(()=>store.saveClient('lumo-launch-scenes',scenes.value.filter(s=>s.id!==scene.id)))}

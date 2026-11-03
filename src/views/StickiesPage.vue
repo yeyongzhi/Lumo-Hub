@@ -23,6 +23,7 @@ const deleteOpen=ref(false)
 const deleteTitle=computed(()=>store.stickies.find(item=>item.id===deleteId.value)?.title||'无标题便签')
 function askDelete(id:string){deleteId.value=id;deleteOpen.value=true}
 function formatDate(value:string){const date=new Date(value);return Number.isNaN(date.getTime())?value:date.toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+const creating=ref(false)
 const saveState=ref('')
 let saveTimer:ReturnType<typeof setTimeout>|undefined
 let unregisterSave:(()=>void)|undefined
@@ -58,7 +59,7 @@ async function saveNow():Promise<boolean>{
 }
 watch([title,content],()=>{if(loadingRecord||!activeId.value)return;saveState.value='未保存';if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(()=>void saveNow(),600)},{flush:'sync'})
 async function select(id:string){if(id===activeId.value)return;if(!await saveNow())return;load(id)}
-async function create(){if(!await saveNow())return;try{const item=await api.createSticky('新便签');await store.reload();load(item.id);store.notify('已新建便签')}catch(e){store.notify(String(e))}}
+async function create(){if(creating.value)return;creating.value=true;try{if(!await saveNow())return;const item=await api.createSticky('新便签');await store.reload();load(item.id);store.notify('已新建便签')}catch(e){store.notify(String(e))}finally{creating.value=false}}
 async function remove(id=activeId.value){const item=store.stickies.find(sticky=>sticky.id===id);if(!item)return;if(!await saveNow())return;try{await api.deleteSticky(item.id);await store.reload();if(id===activeId.value)load(recentSticky.value?.id??'');store.notify('便签已移入回收站')}catch(e){store.notify(String(e))}}
 onMounted(()=>{unregisterSave=store.registerPendingSave(async()=>{if(!await saveNow())throw new Error('便签尚未保存')})})
 onBeforeUnmount(()=>{if(saveTimer)clearTimeout(saveTimer);unregisterSave?.();if(activeId.value&&saveState.value==='未保存')void saveNow()})
@@ -72,7 +73,7 @@ watch(()=>store.searchTarget,target=>{if(target?.kind==='sticky'){load(target.id
 
       <Card class="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
         <div class="shrink-0 px-1"><p class="text-base font-semibold">我的便签 · {{ store.stickies.length }}</p><p class="mt-1 text-xs text-muted-foreground">适合临时记录：置顶常用内容，</p></div>
-        <div class="flex shrink-0 items-center gap-2"><div class="relative min-w-0 flex-1"><Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input v-model="filter" class="pl-9" placeholder="搜索便签" aria-label="搜索便签" /></div><Button size="icon" aria-label="新建便签" title="新建便签" @click="create"><Plus /></Button></div>
+        <div class="flex shrink-0 items-center gap-2"><div class="relative min-w-0 flex-1"><Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input v-model="filter" class="pl-9" placeholder="搜索便签" aria-label="搜索便签" /></div><Button size="icon" aria-label="新建便签" title="新建便签" :disabled="creating" @click="create"><Plus /></Button></div>
         <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
         <ContextMenu v-for="item in filtered" :key="item.id"><ContextMenuTrigger as-child><Button variant="ghost" class="h-auto w-full flex-col items-stretch gap-1 rounded-xl px-3 py-3 text-left whitespace-normal" :class="activeId===item.id?'bg-accent':''" @click="select(item.id)"><span class="flex min-w-0 items-center gap-2 text-sm font-medium"><Pin v-if="store.settings.product.pinned_stickies.includes(item.id)" class="shrink-0 text-primary" aria-label="已置顶" /><span class="truncate">{{ item.title||'无标题便签' }}</span></span><span class="line-clamp-2 text-xs leading-5 text-muted-foreground">{{ item.content||'空白便签' }}</span></Button></ContextMenuTrigger><ContextMenuContent class="w-44"><ContextMenuGroup><ContextMenuItem @select="togglePin(item.id)"><PinOff v-if="store.settings.product.pinned_stickies.includes(item.id)" /><Pin v-else />{{ store.settings.product.pinned_stickies.includes(item.id)?'取消置顶':'置顶' }}</ContextMenuItem></ContextMenuGroup><ContextMenuSeparator /><ContextMenuGroup><ContextMenuItem variant="destructive" @select="askDelete(item.id)"><Trash2 />删除便签</ContextMenuItem></ContextMenuGroup></ContextMenuContent></ContextMenu>
         </div>

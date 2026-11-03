@@ -82,6 +82,7 @@ const deleteNoteOpen=ref(false)
 const deleteNoteId=ref('')
 function askDeleteNote(id:string){deleteNoteId.value=id;deleteNoteOpen.value=true}
 const mode=ref<'edit'|'preview'>('preview')
+const creating=ref(false)
 const saveState=ref('')
 let saveTimer:ReturnType<typeof setTimeout>|undefined
 let unregisterSave:(()=>void)|undefined
@@ -120,7 +121,7 @@ async function saveNow():Promise<boolean>{
 }
 watch([title,content],()=>{if(loadingRecord||!activeId.value)return;saveState.value='未保存';if(saveTimer)clearTimeout(saveTimer);saveTimer=setTimeout(()=>void saveNow(),600)},{flush:'sync'})
 async function select(id:string){if(id===activeId.value){managingTags.value=false;return;}if(!await saveNow())return;load(id)}
-async function create(){if(!await saveNow())return;try{const item=await api.createNote('新笔记');await store.reload();load(item.id);mode.value='edit';store.notify('已新建笔记')}catch(e){store.notify(String(e))}}
+async function create(){if(creating.value)return;creating.value=true;try{if(!await saveNow())return;const item=await api.createNote('新笔记');await store.reload();load(item.id);mode.value='edit';store.notify('已新建笔记')}catch(e){store.notify(String(e))}finally{creating.value=false}}
 async function remove(){const id=deleteNoteId.value;if(!id||!await saveNow())return;try{await api.deleteNote(id);await store.reload();if(id===activeId.value)load(recentNote.value?.id??'');store.notify('笔记已移入回收站')}catch(e){store.notify(String(e))}}
 onMounted(()=>{unregisterSave=store.registerPendingSave(async()=>{if(!await saveNow())throw new Error('笔记尚未保存')})})
 onBeforeUnmount(()=>{if(saveTimer)clearTimeout(saveTimer);unregisterSave?.();if(activeId.value&&saveState.value==='未保存')void saveNow()})
@@ -140,7 +141,7 @@ async function openMarkdownLink(event:MouseEvent){const anchor=(event.target as 
           <p class="mt-1 text-muted-foreground">原文件已保留。请检查文件头部格式；修复后重新打开笔记页即可载入。</p>
           <ScrollArea class="mt-2 max-h-24"><ul class="list-disc space-y-1 pl-4"><li v-for="issue in store.noteFileIssues" :key="issue" class="break-all">{{ issue }}</li></ul></ScrollArea>
         </div>
-        <div class="flex shrink-0 items-center gap-2"><div class="relative min-w-0 flex-1"><Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input v-model="filter" class="pl-9" placeholder="搜索笔记" aria-label="搜索笔记" /></div><Button size="icon" aria-label="新建笔记" title="新建笔记" @click="create"><FilePlus2 /></Button></div>
+        <div class="flex shrink-0 items-center gap-2"><div class="relative min-w-0 flex-1"><Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input v-model="filter" class="pl-9" placeholder="搜索笔记" aria-label="搜索笔记" /></div><Button size="icon" aria-label="新建笔记" title="新建笔记" :disabled="creating" @click="create"><FilePlus2 /></Button></div>
         <div class="flex shrink-0 items-center gap-2"><Select v-model="tagFilter"><SelectTrigger class="min-w-0 flex-1" aria-label="按标签筛选笔记"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">全部标签</SelectItem><SelectItem v-for="tag in allTags" :key="tag" :value="tag">{{ tag }}</SelectItem></SelectGroup></SelectContent></Select><TooltipProvider><Tooltip><TooltipTrigger as-child><Button variant="ghost" size="icon" aria-label="标签管理" :aria-pressed="managingTags" @click="openTagManager"><Settings /></Button></TooltipTrigger><TooltipContent>标签管理</TooltipContent></Tooltip></TooltipProvider></div>
         <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain">
         <ContextMenu v-for="note in filtered" :key="note.id"><ContextMenuTrigger as-child><Button variant="ghost" class="h-auto w-full flex-col items-stretch gap-1 rounded-xl px-3 py-3 text-left whitespace-normal" :class="activeId===note.id?'bg-accent':''" @click="select(note.id)"><span class="truncate text-sm font-medium">{{ note.title||'无标题笔记' }}</span><span class="line-clamp-2 text-xs leading-5 text-muted-foreground">{{ note.content||'开始写下第一行……' }}</span></Button></ContextMenuTrigger><ContextMenuContent class="w-40"><ContextMenuGroup><ContextMenuItem @select="exportNote(note.id)"><FileOutput />导出</ContextMenuItem><ContextMenuItem variant="destructive" @select="askDeleteNote(note.id)"><Trash2 />删除</ContextMenuItem></ContextMenuGroup></ContextMenuContent></ContextMenu>

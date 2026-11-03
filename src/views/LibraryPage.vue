@@ -87,16 +87,113 @@ async function previewPaths(paths:string[]){try{dropPreview.value=(await api.pre
 async function importDrop(){if(dropBusy.value)return;dropBusy.value=true;let added=0,failed=0;try{for(const item of dropPreview.value.filter(i=>i.selected)){try{await api.createResource({...item,group_id:activeGroup.value?.id??null,aliases:''});item.selected=false;added++}catch(e){failed++;store.notify(`${item.name}：${String(e)}`)}}await store.reload();if(!failed)showDrop.value=false;store.notify(`新增 ${added} 项，失败 ${failed} 项`)}finally{dropBusy.value=false}}
 function dropText(event:DragEvent){const text=event.dataTransfer?.getData('text/uri-list')||event.dataTransfer?.getData('text/plain');if(text&&/^https?:\/\//i.test(text.trim())){addResource();form.kind='web';form.target=text.trim();try{form.name=new URL(form.target).hostname}catch{}}}
 let stopDrop:(()=>void)|undefined
-let draggedResource:{id:string;x:number;y:number;active:boolean}|null=null
-function beginResourceDrag(event:PointerEvent,id:string){if(event.button!==0||reordering.value)return;event.preventDefault();previewOrder.value=allOrderedIds();draggedResource={id,x:event.clientX,y:event.clientY,active:false}}
-function resourcePointerMove(event:PointerEvent){if(!draggedResource)return;if(Math.hypot(event.clientX-draggedResource.x,event.clientY-draggedResource.y)>6){draggedResource.active=true;draggingTile.value=draggedResource.id;const target=document.elementFromPoint(event.clientX,event.clientY);const targetId=target?.closest<HTMLElement>('[data-resource-tile]')?.dataset.resourceTile??'';tileDrop.value=targetId;groupDrop.value=target?.closest<HTMLElement>('[data-resource-group]')?.dataset.resourceGroup??'';if(targetId&&targetId!==draggedResource.id&&previewOrder.value){const order=previewOrder.value.filter(id=>id!==draggedResource!.id);const index=order.indexOf(targetId);if(index>=0){order.splice(index,0,draggedResource.id);previewOrder.value=order}}}}
-async function saveOrder(ids:string[]){if(reordering.value)return;reordering.value=true;try{await store.saveClient('lumo-library-order',ids);customOrder.value=ids;sortMode.value='custom'}finally{reordering.value=false}}
+let disposed=false
+type DragSlot={id:string;left:number;top:number;width:number;height:number;element:HTMLElement}
+let draggedResource:{id:string;pointer:number;x:number;y:number;startX:number;startY:number;offsetX:number;offsetY:number;active:boolean;slots:DragSlot[];visible:string[];original:string[];order:string[];index:number;gridRect:DOMRect;viewport:DOMRect;dirty:boolean;scroll:HTMLElement;scrollTop:number;grid:HTMLElement;ghost:HTMLElement|null;handle:HTMLElement}|null=null
+let dragFrame=0, suppressLaunchUntil=0
+function beginResourceDrag(event:PointerEvent,id:string){
+  if(event.button!==0||reordering.value||batchMode.value)return
+  cancelResourceDrag();event.preventDefault();event.stopPropagation()
+  const handle=event.currentTarget as HTMLElement, tile=handle.closest<HTMLElement>('[data-resource-tile]')
+  const grid=tile?.parentElement, scroll=tile?.closest<HTMLElement>('[data-slot="scroll-area-viewport"]')
+  if(!tile||!grid||!scroll)return
+  const rect=tile.getBoundingClientRect(), visible=shownResources.value.map(item=>item.id)
+  const original=allOrderedIds()
+  const slots=[...grid.querySelectorAll<HTMLElement>('[data-resource-tile]')].map(element=>{const r=element.getBoundingClientRect();return {id:element.dataset.resourceTile!,left:r.left,top:r.top,width:r.width,height:r.height,element}})
+  draggedResource={id,pointer:event.pointerId,x:event.clientX,y:event.clientY,startX:event.clientX,startY:event.clientY,offsetX:event.clientX-rect.left,offsetY:event.clientY-rect.top,active:false,slots,visible,original,order:original,index:visible.indexOf(id),gridRect:grid.getBoundingClientRect(),viewport:scroll.getBoundingClientRect(),dirty:true,scroll,scrollTop:scroll.scrollTop,grid,ghost:null,handle}
+  handle.setPointerCapture(event.pointerId)
+}
+function resourcePointerMove(event:PointerEvent){
+  const drag=draggedResource
+  if(!drag||event.pointerId!==drag.pointer)return
+  drag.x=event.clientX;drag.y=event.clientY;drag.dirty=true
+  if(!drag.active&&Math.hypot(drag.x-drag.startX,drag.y-drag.startY)<4)return
+  event.preventDefault()
+  if(!drag.active){
+    drag.active=true;draggingTile.value=drag.id
+    const tile=drag.grid.querySelector<HTMLElement>(`[data-resource-tile="${CSS.escape(drag.id)}"]`)!
+    const rect=tile.getBoundingClientRect(),ghost=tile.cloneNode(true) as HTMLElement
+    ghost.removeAttribute('id');ghost.querySelectorAll('[id]').forEach(node=>node.removeAttribute('id'))
+    ghost.setAttribute('aria-hidden','true');ghost.inert=true
+    Object.assign(ghost.style,{position:'fixed',left:'0',top:'0',width:rect.width+'px',height:rect.height+'px',pointerEvents:'none',zIndex:'9999',margin:'0',background:'var(--card)',boxShadow:'0 8px 24px #0002',opacity:'0.95',willChange:'transform',transition:'none'})
+    document.body.appendChild(ghost);drag.ghost=ghost
+    drag.grid.style.cursor='grabbing'
+  }
+  if(!dragFrame)dragFrame=requestAnimationFrame(resourceDragFrame)
+}
+function updateResourceDrag(){
+  const drag=draggedResource;if(!drag?.active)return
+  const target=document.elementFromPoint(drag.x,drag.y)
+  const group=target?.closest<HTMLElement>('[data-resource-group]')
+  groupDrop.value=group?.dataset.resourceGroup??''
+  if(group){tileDrop.value='';return}
+  const gridRect=drag.gridRect,viewport=drag.viewport
+  if(drag.x<gridRect.left||drag.x>gridRect.right||drag.y<viewport.top||drag.y>viewport.bottom){tileDrop.value='';return}
+  const y=drag.y+drag.scroll.scrollTop-drag.scrollTop
+  let index=-1,distance=Infinity
+  drag.slots.forEach((slot,i)=>{const d=(drag.x-slot.left-slot.width/2)**2+(y-slot.top-slot.height/2)**2;if(d<distance){distance=d;index=i}})
+  tileDrop.value=drag.id
+  if(index<0||index===drag.index)return
+  drag.index=index
+  const visible=drag.visible.filter(id=>id!==drag.id);visible.splice(index,0,drag.id)
+  const visibleSet=new Set(drag.visible);let position=0
+  const order=drag.original.map(id=>visibleSet.has(id)?visible[position++]!:id)
+  drag.order=order
+  const destinations=new Map(visible.map((id,i)=>[id,drag.slots[i]!]))
+  for(const slot of drag.slots){
+    const destination=destinations.get(slot.id)!
+    slot.element.style.transform=`translate3d(${destination.left-slot.left}px,${destination.top-slot.top}px,0)`
+  }
+}
+function resourceDragFrame(){
+  dragFrame=0;const drag=draggedResource;if(!drag?.active)return
+  const rect=drag.viewport,edge=48
+  let scrolled=false
+  if(drag.x>=rect.left&&drag.x<=rect.right){
+    const speed=drag.y<rect.top+edge?-Math.min(18,(rect.top+edge-drag.y)/3):drag.y>rect.bottom-edge?Math.min(18,(drag.y-rect.bottom+edge)/3):0
+    if(speed){const previous=drag.scroll.scrollTop;drag.scroll.scrollTop+=speed;scrolled=previous!==drag.scroll.scrollTop}
+  }
+  // Process all pointer events at most once per animation frame; stop when idle.
+  if(drag.dirty||scrolled){
+    updateResourceDrag()
+    if(drag.ghost)drag.ghost.style.transform=`translate3d(${drag.x-drag.offsetX}px,${drag.y-drag.offsetY}px,0)`
+    drag.dirty=false
+  }
+  if(scrolled)dragFrame=requestAnimationFrame(resourceDragFrame)
+}
+async function saveOrder(ids:string[]){
+  if(reordering.value)return
+  const previous=customOrder.value,previousMode=sortMode.value
+  reordering.value=true;customOrder.value=[...ids];sortMode.value='custom'
+  try{await store.saveClient('lumo-library-order',ids)}
+  catch(e){customOrder.value=previous;sortMode.value=previousMode;throw e}
+  finally{reordering.value=false}
+}
 function allOrderedIds(){return [...new Set([...(sortMode.value==='custom'?customOrder.value:sessionOrder.value),...store.resources.map(i=>i.id)])]}
 async function moveTile(id:string,direction:number){const visible=shownResources.value.map(i=>i.id),target=visible[visible.indexOf(id)+direction];if(!target)return;const ids=allOrderedIds();const from=ids.indexOf(id),to=ids.indexOf(target);[ids[from],ids[to]]=[ids[to]!,ids[from]!];try{await saveOrder(ids)}catch(e){store.notify(String(e))}}
-async function resourcePointerUp(event:PointerEvent){const dragged=draggedResource;const order=previewOrder.value;const target=document.elementFromPoint(event.clientX,event.clientY);const group=target?.closest<HTMLElement>('[data-resource-group]');cancelResourceDrag();if(!dragged?.active)return;try{if(group){await api.moveResource(dragged.id,group.dataset.resourceGroup||null);await store.reload();return}const id=target?.closest<HTMLElement>('[data-resource-tile]')?.dataset.resourceTile;if(id&&id!==dragged.id&&order)await saveOrder(order)}catch(e){store.notify(String(e))}}
-function cancelResourceDrag(){draggedResource=null;draggingTile.value='';tileDrop.value='';groupDrop.value='';previewOrder.value=null}
-onMounted(async()=>{window.addEventListener('pointermove',resourcePointerMove);window.addEventListener('pointerup',resourcePointerUp);window.addEventListener('blur',cancelResourceDrag);window.addEventListener('pointercancel',cancelResourceDrag);try{const stop=await getCurrentWindow().onDragDropEvent(({payload})=>{dropHint.value=payload.type==='enter'||payload.type==='over';if(payload.type==='drop'){if(showForm.value)void fillFormFromDrop(payload.paths);else void previewPaths(payload.paths)}});stopDrop=stop}catch{}})
-onUnmounted(()=>{stopDrop?.();window.removeEventListener('pointermove',resourcePointerMove);window.removeEventListener('pointerup',resourcePointerUp);window.removeEventListener('blur',cancelResourceDrag);window.removeEventListener('pointercancel',cancelResourceDrag)})
+async function resourcePointerUp(event:PointerEvent){
+  const drag=draggedResource;if(!drag||event.pointerId!==drag.pointer)return
+  if(drag.active){drag.x=event.clientX;drag.y=event.clientY;updateResourceDrag()}
+  const order=drag.order,group=document.elementFromPoint(event.clientX,event.clientY)?.closest<HTMLElement>('[data-resource-group]')
+  const inside=!!tileDrop.value
+  if(drag.active)suppressLaunchUntil=Date.now()+300
+  // Commit the displayed order before removing the preview to avoid a snap back.
+  const save=drag.active&&!group&&inside&&order&&order.some((id,i)=>id!==drag.original[i])?saveOrder(order):null
+  cancelResourceDrag()
+  if(!drag.active)return
+  try{if(group){await api.moveResource(drag.id,group.dataset.resourceGroup||null);await store.reload()}else if(save)await save}catch(e){store.notify(String(e))}
+}
+function cancelResourceDrag(){
+  const drag=draggedResource;draggedResource=null
+  if(dragFrame)cancelAnimationFrame(dragFrame);dragFrame=0
+  if(drag){drag.ghost?.remove();for(const slot of drag.slots)slot.element.style.removeProperty('transform');drag.grid.style.cursor='';if(drag.handle.hasPointerCapture(drag.pointer))drag.handle.releasePointerCapture(drag.pointer)}
+  draggingTile.value='';tileDrop.value='';groupDrop.value='';previewOrder.value=null
+}
+function resourceDragScroll(){if(draggedResource?.active){draggedResource.dirty=true;if(!dragFrame)dragFrame=requestAnimationFrame(resourceDragFrame)}}
+function resourceDragKeydown(event:KeyboardEvent){if(event.key==='Escape'&&draggedResource){event.preventDefault();cancelResourceDrag()}}
+
+onMounted(async()=>{window.addEventListener('resize',cancelResourceDrag);window.addEventListener('scroll',resourceDragScroll,{capture:true,passive:true});window.addEventListener('pointermove',resourcePointerMove,{passive:false});window.addEventListener('keydown',resourceDragKeydown);window.addEventListener('pointerup',resourcePointerUp);window.addEventListener('blur',cancelResourceDrag);window.addEventListener('pointercancel',cancelResourceDrag);try{const stop=await getCurrentWindow().onDragDropEvent(({payload})=>{if(disposed)return;dropHint.value=payload.type==='enter'||payload.type==='over';if(payload.type==='drop'){if(showForm.value)void fillFormFromDrop(payload.paths);else void previewPaths(payload.paths)}});if(disposed)stop();else stopDrop=stop}catch{}})
+onUnmounted(()=>{disposed=true;cancelResourceDrag();window.removeEventListener('resize',cancelResourceDrag);window.removeEventListener('scroll',resourceDragScroll,true);window.removeEventListener('keydown',resourceDragKeydown);stopDrop?.();window.removeEventListener('pointermove',resourcePointerMove);window.removeEventListener('pointerup',resourcePointerUp);window.removeEventListener('blur',cancelResourceDrag);window.removeEventListener('pointercancel',cancelResourceDrag)})
 async function refreshHealth(){try{resourceHealth.value=await api.resourceHealth()}catch(e){store.notify(String(e))}}
 const showForm=ref(false)
 const editingId=ref('')
@@ -136,16 +233,27 @@ const filters=[{id:'all',label:'全部',icon:LayoutGrid},{id:'app',label:'应用
 watch(()=>store.searchTarget,async target=>{if(target?.kind==='resource'){focusedId.value='';activeFilter.value='all';await nextTick();document.getElementById(`resource-${target.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});store.searchTarget=null}},{immediate:true})
 const matchingIds=ref<string[]>([])
 let searchVersion=0
-watch([query,()=>store.resources],async ([value])=>{const version=++searchVersion;matchingIds.value=[];try{const results=await api.searchResources(value);if(version===searchVersion)matchingIds.value=results.map(item=>item.id)}catch(e){store.notify(String(e))}})
+let searchTimer:ReturnType<typeof setTimeout>|undefined
+watch([query,()=>store.resources],([value],_,onCleanup)=>{
+  const version=++searchVersion, keyword=value.trim()
+  matchingIds.value=[]
+  if(!keyword)return
+  searchTimer=setTimeout(async()=>{
+    try{const results=await api.searchResources(keyword);if(version===searchVersion&&!disposed)matchingIds.value=results.map(item=>item.id)}
+    catch(e){if(version===searchVersion&&!disposed)store.notify(String(e))}
+  },250)
+  onCleanup(()=>{clearTimeout(searchTimer);++searchVersion})
+},{immediate:true})
 const shownResources=computed(()=>{
   const list=store.resources.filter(r=>(activeFilter.value==='all'||(activeFilter.value==='pinned'&&fixedIds.value.includes(r.id))||activeFilter.value===r.kind||(activeFilter.value==='favorites'&&r.is_favorite)||activeFilter.value===`group:${r.group_id}`)&&(!query.value.trim()||matchingIds.value.includes(r.id)))
   const sorted=list.sort((a,b)=>query.value.trim()?matchingIds.value.indexOf(a.id)-matchingIds.value.indexOf(b.id):sortMode.value==='name'?a.name.localeCompare(b.name):sortMode.value==='recent'?(b.last_opened_at??'').localeCompare(a.last_opened_at??'')||a.name.localeCompare(b.name):b.usage_count-a.usage_count||Number(b.is_favorite)-Number(a.is_favorite)||a.name.localeCompare(b.name))
-  if(query.value.trim())return sorted
+  if(query.value.trim()&&!previewOrder.value&&sortMode.value!=='custom')return sorted
   return stableResourceOrder(sorted,previewOrder.value??(sortMode.value==='custom'?customOrder.value:sessionOrder.value))
 })
 watch([sortMode,activeFilter,query],()=>{sessionOrder.value=[]})
 watch(shownResources,items=>{if(!query.value.trim()&&!sessionOrder.value.length&&items.length)sessionOrder.value=items.map(i=>i.id)},{immediate:true})
 const batchMode=ref(false), selectedIds=ref<string[]>([]), batchBusy=ref(false), deleteBatch=ref(false)
+watch([activeFilter,query,displayMode,density,batchMode],()=>cancelResourceDrag())
 watch([activeFilter,query],()=>{selectedIds.value=[]})
 function toggleSelection(id:string){selectedIds.value=selectedIds.value.includes(id)?selectedIds.value.filter(x=>x!==id):[...selectedIds.value,id]}
 async function batch(action:'move'|'favorite'|'unfavorite'|'delete',groupId:string|null=null,ids=selectedIds.value){
@@ -196,7 +304,7 @@ async function save(){
   }catch(e){store.notify(`保存失败：${String(e)}`)}finally{formSaving.value=false}
 }
 async function remove(item:Resource){if(!await askConfirmation(`从应用库移除“${item.name}”？原始程序或文件不会删除。`))return;try{await api.deleteResource(item.id);await store.reload();store.notify('已从应用库移除')}catch(e){store.notify(String(e))}}
-async function launch(item:Resource){if(openingIds.has(item.id))return;if(resourceHealth.value[item.id]===false){await relocate(item);return;}openingIds.add(item.id);try{await store.launchResource(item.id)}catch(e){store.notify(String(e));if(item.kind!=='web'&&await askConfirmation('该路径可能已失效。现在重新定位吗？'))await relocate(item)}finally{openingIds.delete(item.id)}}
+async function launch(item:Resource){if(draggingTile.value||Date.now()<suppressLaunchUntil)return;if(openingIds.has(item.id))return;if(resourceHealth.value[item.id]===false){await relocate(item);return;}openingIds.add(item.id);try{await store.launchResource(item.id)}catch(e){store.notify(String(e));if(item.kind!=='web'&&await askConfirmation('该路径可能已失效。现在重新定位吗？'))await relocate(item)}finally{openingIds.delete(item.id)}}
 async function relocate(item:Resource){const result=await open({multiple:false,directory:false,filters:item.kind==='app'?[{name:'应用程序或快捷方式',extensions:['exe','lnk']}]:undefined});if(typeof result!=='string')return;try{await api.relocateResource(item.id,result);await store.reload();store.notify('路径已更新')}catch(e){store.notify(String(e))}}
 async function favorite(item:Resource){try{await api.toggleFavorite(item.id);await store.reload()}catch(e){store.notify(String(e))}}
 async function scan(){scanBusy.value=true;showScan.value=true;try{candidates.value=await api.scanApplications();selectedTargets.value=[];scanCategory.value='application';scanQuery.value='';showImported.value=false}catch(e){store.notify(`扫描失败：${String(e)}`)}finally{scanBusy.value=false}}
@@ -265,11 +373,11 @@ function iconFor(kind:ResourceKind){return kind==='app'?AppWindow:kind==='web'?G
           <DropdownMenu><DropdownMenuTrigger as-child><Button variant="outline" size="sm" :disabled="!selectedIds.length||batchBusy">移动分组</Button></DropdownMenuTrigger><DropdownMenuContent><DropdownMenuGroup><DropdownMenuItem @select="batch('move',null)">未分组</DropdownMenuItem><DropdownMenuItem v-for="group in store.groups" :key="group.id" @select="batch('move',group.id)">{{ group.name }}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent></DropdownMenu>
           <Button variant="outline" size="sm" :disabled="!selectedIds.length||batchBusy" @click="batch('favorite')">收藏</Button><Button variant="outline" size="sm" :disabled="!selectedIds.length||batchBusy" @click="batch('unfavorite')">取消收藏</Button><Button variant="destructive" size="sm" :disabled="!selectedIds.length||batchBusy" @click="deleteBatch=true">移除所选</Button>
         </div>
-        <h2 v-if="shownCommon.length&&shownResources.length&&activeFilter==='all'" class="text-xs font-medium text-muted-foreground">我的启动项 · {{ shownResources.length }}</h2><p v-if="draggingTile" role="status" class="text-xs text-primary">拖到其他启动项前可排序，拖到分组标签可移动分组。</p><div v-if="shownResources.length" :class="batchMode?'grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-4':launcherLayout">
-          <ContextMenu v-for="(item,index) in shownResources" :key="item.id"><ContextMenuTrigger as-child><div class="group relative min-w-0 rounded-2xl" :class="tileDrop===item.id?'ring-2 ring-primary':draggingTile===item.id?'opacity-50':''" :data-resource-tile="item.id"><Button v-if="!batchMode" :id="`resource-${item.id}`" variant="ghost" :class="[launcherTile,focusedId===item.id?'ring-2 ring-primary':'']" :title="item.name" :aria-label="item.name" :aria-busy="openingIds.has(item.id)" :disabled="openingIds.has(item.id)" @click="launch(item)"><span v-if="displayMode==='list'" class="w-7 shrink-0 text-center text-sm tabular-nums text-muted-foreground">{{ shownCommon.length+index+1 }}</span><span class="relative shrink-0" :class="displayMode==='grid'?'size-10':'size-8'"><img v-if="resourceImage(store.settings.client,item)" :src="resourceImage(store.settings.client,item)!" alt="" :class="launcherIcon"/><component :is="iconFor(item.kind)" v-else :class="[launcherIcon,'text-primary']"/></span><span class="min-w-0" :class="displayMode==='grid'?'w-full text-center':'flex-1 text-left'"><span class="block truncate text-sm">{{ openingIds.has(item.id)?'正在打开…':item.name }}</span><span v-if="resourceHealth[item.id]===false" class="text-destructive" :class="displayMode==='grid'?'absolute inset-x-1 bottom-1 truncate text-xs':'block text-xs'">{{ displayMode==='grid'?'路径失效':'路径失效 · 点击重新定位' }}</span><span v-if="displayMode==='list'&&listColumns.includes('path')" class="mt-1 block truncate text-xs text-muted-foreground">{{ item.target }}</span><span v-if="displayMode==='list'&&(listColumns.includes('group')||listColumns.includes('recent'))" class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span v-if="listColumns.includes('group')">{{ store.groups.find(g=>g.id===item.group_id)?.name||'未分组' }}</span><span v-if="listColumns.includes('recent')">{{ item.last_opened_at?'最近使用：'+new Date(item.last_opened_at).toLocaleString('zh-CN'):'尚未使用' }}</span></span></span><span v-if="displayMode==='list'&&listColumns.includes('developer')" class="w-32 shrink-0 truncate text-right text-sm text-muted-foreground">{{ item.kind==='app'?(publishers[item.id]||'未知开发者'):'—' }}</span></Button><Card v-else :id="`resource-${item.id}`" :key="item.id" class="flex min-w-0 flex-col gap-4 p-5 transition-shadow" :class="focusedId===item.id?'ring-2 ring-primary':''">
+        <h2 v-if="shownCommon.length&&shownResources.length&&activeFilter==='all'" class="text-xs font-medium text-muted-foreground">我的启动项 · {{ shownResources.length }}</h2><p role="status" class="sr-only">{{ draggingTile?'拖动中，松手保存位置，按 Escape 取消。':'' }}</p><div v-if="shownResources.length" :class="batchMode?'grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-4':launcherLayout">
+          <ContextMenu v-for="(item,index) in shownResources" :key="item.id"><ContextMenuTrigger as-child><div class="group relative min-w-0 rounded-2xl" :class="tileDrop===item.id?'ring-2 ring-primary':draggingTile===item.id?'opacity-30':''" :data-resource-tile="item.id"><Button v-if="!batchMode" :id="`resource-${item.id}`" variant="ghost" :class="[launcherTile,focusedId===item.id?'ring-2 ring-primary':'']" :title="item.name" :aria-label="item.name" :aria-busy="openingIds.has(item.id)" :disabled="openingIds.has(item.id)" @click="launch(item)"><span v-if="displayMode==='list'" class="w-7 shrink-0 text-center text-sm tabular-nums text-muted-foreground">{{ shownCommon.length+index+1 }}</span><span class="relative shrink-0" :class="displayMode==='grid'?'size-10':'size-8'"><img v-if="resourceImage(store.settings.client,item)" :src="resourceImage(store.settings.client,item)!" alt="" :class="launcherIcon"/><component :is="iconFor(item.kind)" v-else :class="[launcherIcon,'text-primary']"/></span><span class="min-w-0" :class="displayMode==='grid'?'w-full text-center':'flex-1 text-left'"><span class="block truncate text-sm">{{ openingIds.has(item.id)?'正在打开…':item.name }}</span><span v-if="resourceHealth[item.id]===false" class="text-destructive" :class="displayMode==='grid'?'absolute inset-x-1 bottom-1 truncate text-xs':'block text-xs'">{{ displayMode==='grid'?'路径失效':'路径失效 · 点击重新定位' }}</span><span v-if="displayMode==='list'&&listColumns.includes('path')" class="mt-1 block truncate text-xs text-muted-foreground">{{ item.target }}</span><span v-if="displayMode==='list'&&(listColumns.includes('group')||listColumns.includes('recent'))" class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span v-if="listColumns.includes('group')">{{ store.groups.find(g=>g.id===item.group_id)?.name||'未分组' }}</span><span v-if="listColumns.includes('recent')">{{ item.last_opened_at?'最近使用：'+new Date(item.last_opened_at).toLocaleString('zh-CN'):'尚未使用' }}</span></span></span><span v-if="displayMode==='list'&&listColumns.includes('developer')" class="w-32 shrink-0 truncate text-right text-sm text-muted-foreground">{{ item.kind==='app'?(publishers[item.id]||'未知开发者'):'—' }}</span></Button><Card v-else :id="`resource-${item.id}`" :key="item.id" class="flex min-w-0 flex-col gap-4 p-5 transition-shadow" :class="focusedId===item.id?'ring-2 ring-primary':''">
             <div class="flex min-w-0 items-start gap-3"><Checkbox v-if="batchMode" :model-value="selectedIds.includes(item.id)" :aria-label="`选择 ${item.name}`" @update:model-value="toggleSelection(item.id)"/><div class="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary"><img v-if="resourceImage(store.settings.client,item)" :src="resourceImage(store.settings.client,item)!" alt="" class="size-8 object-contain" /><component :is="iconFor(item.kind)" v-else /></div><div class="min-w-0 flex-1"><h2 class="truncate font-semibold">{{ item.name }}</h2><p class="mt-1 truncate text-xs text-muted-foreground">{{ item.target }}</p></div><Button variant="ghost" size="icon" :aria-label="item.is_favorite?'取消收藏':'收藏'" @click="favorite(item)"><Heart :class="item.is_favorite?'fill-primary text-primary':'text-muted-foreground'" /></Button></div>
             <div class="flex flex-wrap items-center justify-between gap-2"><Badge>{{ item.kind==='app'?'应用':item.kind==='web'?'网页':'文件' }}</Badge><span class="flex gap-1"><Button v-if="item.kind!=='web'" variant="ghost" size="sm" @click="relocate(item)">重新定位</Button><Button variant="ghost" size="icon" aria-label="编辑" @click="edit(item)"><Pencil /></Button><Button variant="danger" size="icon" aria-label="删除" @click="remove(item)"><Trash2 /></Button><Button variant="outline" size="sm" @click="launch(item)">打开<ArrowUpRight data-icon="inline-end" /></Button></span></div>
-          </Card><template v-if="!batchMode"><Button variant="ghost" size="icon-xs" class="absolute left-1 top-1 touch-none cursor-grab opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label="拖动排序或移入分组" @pointerdown="beginResourceDrag($event,item.id)"><GripVertical/></Button></template></div></ContextMenuTrigger>
+          </Card><template v-if="!batchMode"><Button variant="ghost" size="icon-xs" class="absolute left-1 top-1 touch-none cursor-grab opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label="拖动排序或移入分组" @pointerdown="beginResourceDrag($event,item.id)" @click.stop :disabled="reordering"><GripVertical/></Button></template></div></ContextMenuTrigger>
           <ContextMenuContent class="w-52"><ContextMenuGroup>
             <ContextMenuItem @select="launch(item)">打开</ContextMenuItem><ContextMenuItem :disabled="reordering||index===0" @select="moveTile(item.id,-1)">向前移动</ContextMenuItem><ContextMenuItem :disabled="reordering||index===shownResources.length-1" @select="moveTile(item.id,1)">向后移动</ContextMenuItem><ContextMenuItem :disabled="item.kind==='web'" @select="reveal(item)">打开所在文件夹</ContextMenuItem><ContextMenuItem @select="copyPath(item)">复制{{ item.kind==='web'?'网址':'路径' }}</ContextMenuItem><ContextMenuItem @select="favorite(item)">{{ item.is_favorite?'取消收藏':'收藏' }}</ContextMenuItem>
             <ContextMenuSub><ContextMenuSubTrigger>移动分组</ContextMenuSubTrigger><ContextMenuSubContent><ContextMenuGroup><ContextMenuItem @select="batch('move',null,[item.id])">未分组</ContextMenuItem><ContextMenuItem v-for="group in store.groups" :key="group.id" @select="batch('move',group.id,[item.id])">{{ group.name }}</ContextMenuItem></ContextMenuGroup></ContextMenuSubContent></ContextMenuSub>

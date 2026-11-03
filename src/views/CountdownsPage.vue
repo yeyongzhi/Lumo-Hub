@@ -1,15 +1,11 @@
 <script setup lang="ts">
-import { writeLocal } from '@/lib/local-files'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { FieldSet, FieldLegend } from '@/components/ui/field'
+import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from '@/components/ui/field'
 
 import { computed, onMounted, onUnmounted, nextTick, reactive, ref, watch } from 'vue'
 import { CalendarDays, Pencil, Plus, RotateCcw, Trash2, LayoutGrid, List, Ellipsis } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Field } from '@/components/ui/field'
-import { FieldGroup } from '@/components/ui/field'
-import { FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -31,7 +27,7 @@ import type { Countdown } from '@/lib/types'
 
 const store = useWorkspaceStore()
 const editingId = ref('')
-const showForm = ref(false)
+const showForm = ref(false), formSaving=ref(false)
 const now = useCurrentDay()
 const today = computed(()=>format(now.value,'yyyy-MM-dd'))
 const form = reactive({ title: '', description: '', target_date: today.value, repeat_type: 'once' as 'once' | 'yearly' })
@@ -47,31 +43,32 @@ watch([query,startDate,endDate,dateStatus],()=>{if(!batchBusy.value)selectedIds.
 watch([showForm,editingId],async ([open])=>{if(open){await nextTick();document.getElementById('countdown-form')?.scrollIntoView({block:'nearest'})}})
 const displayMode=ref<'grid'|'list'>(store.settings.client?.['lumo-countdown-display']==='list'?'list':'grid')
 function setDisplayMode(value:unknown){if(value==='grid'||value==='list')displayMode.value=value}
-watch(displayMode,value=>void writeLocal('lumo-countdown-display',value).catch(e=>store.notify(String(e))))
+watch(displayMode,value=>void store.saveClient('lumo-countdown-display',value).catch(e=>store.notify(String(e))))
 const invalidRange=computed(()=>!!startDate.value&&!!endDate.value&&startDate.value>endDate.value)
 const entries = computed(() => store.countdowns.filter(item=>(dateStatus.value==='all'||(dateStatus.value==='past'?countdownStatus(item,now.value).past:!countdownStatus(item,now.value).past))&&(item.title+' '+(item.description??'')).toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())&&(!startDate.value||format(countdownTarget(item,now.value),'yyyy-MM-dd')>=startDate.value)&&(!endDate.value||format(countdownTarget(item,now.value),'yyyy-MM-dd')<=endDate.value)).sort((a,b) => Number(countdownStatus(a,now.value).past)-Number(countdownStatus(b,now.value).past)||countdownStatus(a,now.value).days-countdownStatus(b,now.value).days))
 watch(()=>store.searchTarget,async target=>{if(target?.kind==='countdown'){dateStatus.value='all';query.value='';startDate.value='';endDate.value='';await nextTick();document.getElementById(`countdown-${target.id}`)?.scrollIntoView({behavior:'smooth',block:'center'});store.searchTarget=null}},{immediate:true})
 
 function resetForm() { datePickerOpen.value=false; editingId.value=''; reminderDays.value=[]; form.title=''; form.description=''; form.target_date=today.value; form.repeat_type='once'; showForm.value=false }
-function edit(item:Countdown) { editingId.value=item.id; reminderDays.value=[...(store.settings.product.reminders[item.id]||[])]; form.title=item.title; form.description=item.description ?? ''; form.target_date=item.target_date; form.repeat_type=item.repeat_type; showForm.value=true }
+function edit(item:Countdown) { if(formSaving.value)return; editingId.value=item.id; reminderDays.value=[...(store.settings.product.reminders[item.id]||[])]; form.title=item.title; form.description=item.description ?? ''; form.target_date=item.target_date; form.repeat_type=item.repeat_type; showForm.value=true }
 async function save() {
-  if (!form.title.trim() || !form.target_date) return
+  if (formSaving.value||!form.title.trim() || !form.target_date) return
+  formSaving.value=true
   try {
     let savedId=editingId.value
     if (editingId.value) {
       const item=store.countdowns.find(x=>x.id===editingId.value)
-      if(item) await api.updateCountdown({...item,title:form.title.trim(),description:form.description.trim()||null,target_date:form.target_date,repeat_type:form.repeat_type})
-    } else savedId=(await api.createCountdown({...form,title:form.title.trim(),description:form.description.trim()||null})).id
+      if(!item)throw new Error('倒数日已不存在');await api.updateCountdown({...item,title:form.title.trim(),description:form.description.trim()||null,target_date:form.target_date,repeat_type:form.repeat_type})
+    } else {const item=await api.createCountdown({...form,title:form.title.trim(),description:form.description.trim()||null});savedId=item.id;editingId.value=item.id;store.countdowns.push(item)}
     await store.setSetting('product',{...store.settings.product,reminders:{...store.settings.product.reminders,[savedId]:reminderDays.value}})
     await store.reload(); store.notify('倒数日已保存'); resetForm()
-  } catch(error) { store.notify(`保存失败：${String(error)}`) }
+  } catch(error) { store.notify(`保存失败：${String(error)}`) } finally {formSaving.value=false}
 }
 const allSelected=computed(()=>entries.value.length>0&&entries.value.every(item=>selectedIds.value.includes(item.id)))
 function toggleSelection(id:string){selectedIds.value=selectedIds.value.includes(id)?selectedIds.value.filter(value=>value!==id):[...selectedIds.value,id]}
 function toggleManagement(){batchMode.value=!batchMode.value;selectedIds.value=[]}
 onMounted(()=>window.addEventListener('lumo-new',addDate))
 onUnmounted(()=>window.removeEventListener('lumo-new',addDate))
-function addDate(){resetForm();showForm.value=true}
+function addDate(){if(formSaving.value)return;resetForm();showForm.value=true}
 async function removeSelected(){
   if(batchBusy.value)return
   batchBusy.value=true
@@ -96,15 +93,15 @@ async function removeSelected(){
     <p v-if="invalidRange" class="shrink-0 text-sm text-destructive">开始日期不能晚于结束日期。</p>
     <div v-if="batchMode&&!showForm" class="flex shrink-0 items-center gap-3 rounded-xl bg-muted p-3"><Checkbox :model-value="allSelected" :disabled="batchBusy||!entries.length" aria-label="选择当前筛选结果" @update:model-value="value=>selectedIds=value===true?entries.map(item=>item.id):[]" /><span class="flex-1 text-sm">已选择 {{ selectedIds.length }} 项</span><Button variant="destructive" size="sm" :disabled="!selectedIds.length||batchBusy" @click="deleteBatch=true"><Trash2 data-icon="inline-start" />{{ batchBusy?'正在删除…':'删除所选' }}</Button><Button variant="outline" size="sm" :disabled="batchBusy" @click="toggleManagement">完成管理</Button></div>
     <div class="relative min-h-0 flex-1 overflow-hidden"><ScrollArea v-if="entries.length||showForm" class="absolute inset-0 h-full w-full" aria-label="倒数日内容"><div class="flex min-w-0 flex-col gap-5 pr-3 pb-3">
-    <Card v-if="showForm" id="countdown-form" class="p-6">
-      <div class="mb-5 flex items-center justify-between"><h2 class="text-2xl font-semibold">{{ editingId ? '编辑倒数日' : '添加倒数日' }}</h2><Button variant="ghost" size="sm" @click="resetForm">取消</Button></div>
+    <Card v-if="showForm" id="countdown-form" class="p-6" :inert="formSaving" :aria-busy="formSaving">
+      <div class="mb-5 flex items-center justify-between"><h2 class="text-2xl font-semibold">{{ editingId ? '编辑倒数日' : '添加倒数日' }}</h2><Button variant="ghost" size="sm"  :disabled="formSaving" @click="resetForm">取消</Button></div>
       <FieldGroup>
           <Field><FieldLabel for="countdown-title">名称</FieldLabel><Input id="countdown-title" v-model="form.title" placeholder="例如：生日、考试、纪念日" /></Field>
           <Field><FieldLabel for="countdown-date">日期</FieldLabel><Popover v-model:open="datePickerOpen"><PopoverTrigger as-child><Button id="countdown-date" variant="outline" class="w-full justify-start"><CalendarDays data-icon="inline-start" />{{ form.target_date ? form.target_date.split('-').join('/') : '选择日期' }}</Button></PopoverTrigger><PopoverContent class="w-auto p-0" align="start"><Calendar :model-value="selectedDate" :default-placeholder="selectedDate" locale="zh-CN" layout="month-and-year" initial-focus @update:model-value="selectDate" /></PopoverContent></Popover></Field>
           <FieldSet><FieldLegend variant="label">重复方式</FieldLegend><RadioGroup v-model="form.repeat_type" aria-label="重复方式"><Field orientation="horizontal"><RadioGroupItem id="countdown-once" value="once" /><FieldLabel for="countdown-once">一次性日期</FieldLabel></Field><Field orientation="horizontal"><RadioGroupItem id="countdown-yearly" value="yearly" /><FieldLabel for="countdown-yearly">每年重复</FieldLabel></Field></RadioGroup></FieldSet>
           <FieldSet><FieldLegend variant="label">提醒（可多选）</FieldLegend><div class="flex flex-wrap gap-4"><Field v-for="option in [{days:0,label:'当天'},{days:1,label:'提前一天'},{days:7,label:'提前一周'}]" :key="option.days" orientation="horizontal" class="w-auto"><Checkbox :id="`reminder-${option.days}`" :model-value="reminderDays.includes(option.days)" @update:model-value="value=>reminderDays=value===true?[...new Set([...reminderDays,option.days])]:reminderDays.filter(day=>day!==option.days)" /><FieldLabel :for="`reminder-${option.days}`">{{ option.label }}</FieldLabel></Field></div><p class="text-xs text-muted-foreground">每天本地时间 {{ String(store.settings.product.reminder_hour).padStart(2,'0') }}:00 检查。应用关闭或电脑关机时不会发送；应用再次运行后会补发最近错过的一天。可在设置中发送测试通知。</p></FieldSet>
           <Field><FieldLabel for="countdown-description">说明（可选）</FieldLabel><Textarea id="countdown-description" v-model="form.description" class="min-h-24 resize-y" :rows="4" placeholder="写一点补充信息" /></Field>
-        <div class="flex justify-end"><Button @click="save">保存倒数日</Button></div>
+        <div class="flex justify-end"><Button :disabled="formSaving" @click="save">{{ formSaving?'保存中…':'保存倒数日' }}</Button></div>
       </FieldGroup>
     </Card>
       <div v-else-if="entries.length" :class="displayMode==='grid'?'grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-5':'flex flex-col gap-3'">

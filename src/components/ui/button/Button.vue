@@ -16,7 +16,7 @@ interface Props extends PrimitiveProps {
 
 defineOptions({ inheritAttrs: false })
 const attrs = useAttrs()
-const tooltip = () => String(attrs["aria-label"] || attrs.title || "")
+const tooltip = () => String(attrs.title || attrs["aria-label"] || "")
 const showTooltip = () => Boolean(tooltip()) && (props.size?.startsWith("icon") || Boolean(attrs.title))
 const buttonAttrs = () => { const { title, ...rest } = attrs; return rest }
 

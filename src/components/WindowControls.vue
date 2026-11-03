@@ -1,13 +1,27 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Minus, X } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 
 const maximized=ref(false)
-onMounted(async()=>{try{maximized.value=await getCurrentWindow().isMaximized()}catch{}})
+let disposed=false, stateVersion=0
+let removeResize:(()=>void)|undefined
+async function syncMaximized(){
+  const version=++stateVersion
+  try{const value=await getCurrentWindow().isMaximized();if(!disposed&&version===stateVersion)maximized.value=value}catch{}
+}
+onMounted(async()=>{
+  try{
+    const unlisten=await getCurrentWindow().onResized(()=>void syncMaximized())
+    if(disposed){unlisten();return}
+    removeResize=unlisten
+  }catch{}
+  if(!disposed)void syncMaximized()
+})
+onUnmounted(()=>{disposed=true;removeResize?.()})
 async function minimize(){try{await getCurrentWindow().minimize()}catch{}}
-async function toggleMaximize(){try{await getCurrentWindow().toggleMaximize();maximized.value=await getCurrentWindow().isMaximized()}catch{}}
+async function toggleMaximize(){try{await getCurrentWindow().toggleMaximize();await syncMaximized()}catch{}}
 async function closeWindow(){try{await getCurrentWindow().close()}catch{}}
 </script>
 

@@ -1,8 +1,5 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import App from "./App.vue";
-import ToolWindow from "./views/ToolWindow.vue";
-import LaunchPanel from "./views/LaunchPanel.vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import "./assets/main.css";
@@ -25,4 +22,12 @@ if (import.meta.env.PROD && isTauri()) {
   }, { capture: true });
 }
 
-createApp(new URLSearchParams(location.search).has("tool") ? ToolWindow : isTauri() && getCurrentWindow().label === "quick-launch" ? LaunchPanel : App).use(createPinia()).mount("#app");
+async function mountWindow() {
+  const { default: root } = await (new URLSearchParams(location.search).has("tool")
+    ? import("./views/ToolWindow.vue")
+    : isTauri() && getCurrentWindow().label === "quick-launch"
+      ? import("./views/LaunchPanel.vue")
+      : import("./App.vue"));
+  createApp(root).use(createPinia()).mount("#app");
+}
+void mountWindow();

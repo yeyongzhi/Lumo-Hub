@@ -113,9 +113,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     catch (error) { notify(`无法保存欢迎流程：${String(error)}`) }
   }
 
-  async function saveClient(key: string, value: unknown) {
-    await writeLocal(key, value)
-    settings.value = { ...settings.value, client: { ...settings.value.client, [key]: value } }
+  const unsavedClient = new Map<string, unknown>()
+  function saveClient(key: string, value: unknown) {
+    const snapshot = JSON.parse(JSON.stringify(value)) as unknown
+    unsavedClient.set(key, snapshot)
+    const job = settingChain.then(async () => {
+      await writeLocal(key, snapshot)
+      settings.value = { ...settings.value, client: { ...settings.value.client, [key]: snapshot } }
+      if (unsavedClient.get(key) === snapshot) unsavedClient.delete(key)
+    })
+    settingChain = job.catch(() => {})
+    return job
   }
 
   async function launchResource(id: string) {
@@ -131,6 +139,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function flushPendingSaves() {
     await settingChain
     await Promise.all([...pendingSaves].map(flush => flush()))
+    await settingChain
+    await Promise.all([...unsavedClient].map(([key, value]) => saveClient(key, value)))
   }
 
   return { initialized, cleanUninstall, startupError, recoveryError, message, settings, bootstrap, notes, noteFileIssues, stickies, countdowns, resources, groups, searchTarget, initialize, recoverDataDirectory, reload, notify, setSetting, saveClient, completeWelcome, launchResource, registerPendingSave, flushPendingSaves }

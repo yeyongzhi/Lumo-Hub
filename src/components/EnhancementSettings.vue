@@ -4,8 +4,10 @@ import { launcherOrder, launcherSections } from '@/lib/launcher-preferences'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import { onMounted, onUnmounted, ref, watch, computed } from 'vue'
-import { Trash2, RotateCcw, GripVertical } from '@lucide/vue'
+import { Trash2, RotateCcw, GripVertical, Search, ChevronLeft, ChevronRight } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty'
+import { Pagination, PaginationContent, PaginationItem, PaginationEllipsis, PaginationPrevious, PaginationNext } from '@/components/ui/pagination'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui/field'
@@ -17,7 +19,17 @@ const props=withDefaults(defineProps<{section?:string}>(),{section:'all'})
 const store=useWorkspaceStore()
 const emit=defineEmits<{ restoreBackup: [] }>()
 const shortcut=ref(store.settings.launcher.shortcut), shortcutError=ref(''), saving=ref(false), backupBusy=ref(false), notificationBusy=ref(false), notificationStatus=ref('')
+const backupError=ref('')
 const status=ref<BackupStatus>(), trash=ref<TrashItem[]>([]), loading=ref(true), error=ref(''), trashBusy=ref(false)
+const trashKind=ref('all'), trashQuery=ref('')
+const appliedKind=ref('all'), appliedQuery=ref(''), trashPage=ref(1), trashPageSize=ref(10)
+const filteredTrash=computed(()=>trash.value.filter(item=>(appliedKind.value==='all'||item.kind===appliedKind.value)&&(!appliedQuery.value||(item.title||'无标题').toLocaleLowerCase().includes(appliedQuery.value))))
+const trashPageCount=computed(()=>Math.max(1,Math.ceil(filteredTrash.value.length/trashPageSize.value)))
+const pagedTrash=computed(()=>filteredTrash.value.slice((trashPage.value-1)*trashPageSize.value,trashPage.value*trashPageSize.value))
+watch(trashPageCount,count=>{trashPage.value=Math.min(trashPage.value,count)},{flush:'sync'})
+watch(trashPageSize,()=>{trashPage.value=1})
+function searchTrash(){appliedKind.value=trashKind.value;appliedQuery.value=trashQuery.value.trim().toLocaleLowerCase();trashPage.value=1}
+function resetTrash(){trashKind.value='all';trashQuery.value='';searchTrash()}
 const purgeOpen=ref(false), purgeId=ref<string|null>(null)
 const startupShortcutError=ref('')
 let removeShortcutListener:UnlistenFn|undefined
@@ -86,12 +98,29 @@ async function savePanelSize(){
 function choosePanelSize(value:unknown){sizeChoice.value=String(value);sizeError.value='';if(sizeChoice.value==='custom')return;if(sizeChoice.value!=='default'){const [width,height]=sizeChoice.value.split('x').map(Number);panelWidth.value=width!;panelHeight.value=height!}void savePanelSize()}
 const kindNames={note:'笔记',sticky:'便签',countdown:'倒数日'}
 watch(()=>store.settings.launcher.shortcut,value=>shortcut.value=value)
-watch(()=>store.settings,()=>void refresh())
-let timer:ReturnType<typeof setInterval>
+watch(()=>props.section,()=>{loading.value=true;void refresh()})
+let timer:ReturnType<typeof setInterval>|undefined
+let disposed=false
+let refreshVersion=0
 async function desktopOption(key:'close_to_tray'|'autostart',value:boolean){try{await store.setSetting('product',{...store.settings.product,[key]:value})}catch(e){store.notify('设置失败：'+String(e))}}
-async function refresh(){try{const [s,t,e]=await Promise.all([api.autoBackupStatus(),api.listTrash(),api.launcherStatus()]);status.value=s;trash.value=t;startupShortcutError.value=e??'';error.value=''}catch(e){error.value=String(e)}finally{loading.value=false}}
-onMounted(async()=>{removeShortcutListener=await listen<string|null>('lumo-shortcut-status',({payload})=>{startupShortcutError.value=payload??''});void refresh();timer=setInterval(refresh,30000)})
-onUnmounted(()=>{clearInterval(timer);removeShortcutListener?.()})
+async function refresh(){
+  if(disposed)return
+  const version=++refreshVersion
+  const current=()=>!disposed&&version===refreshVersion
+  const tasks:Promise<void>[]=[]
+  if(['backup','all'].includes(props.section))tasks.push(api.autoBackupStatus().then(value=>{if(current()){status.value=value;backupError.value=''}},reason=>{if(current())backupError.value=String(reason)}))
+  if(['trash','all'].includes(props.section))tasks.push(api.listTrash().then(value=>{if(current()){trash.value=value;error.value=''}},reason=>{if(current())error.value=String(reason)}))
+  if(['launcher','all'].includes(props.section))tasks.push(api.launcherStatus().then(value=>{if(current())startupShortcutError.value=value??''},reason=>{if(current())startupShortcutError.value=String(reason)}))
+  await Promise.all(tasks)
+  if(current())loading.value=false
+}
+onMounted(()=>{
+  void refresh();timer=setInterval(()=>void refresh(),30000)
+  if(['launcher','all'].includes(props.section))void listen<string|null>('lumo-shortcut-status',({payload})=>{startupShortcutError.value=payload??''})
+    .then(unlisten=>{if(disposed)unlisten();else removeShortcutListener=unlisten})
+    .catch(e=>{if(!disposed)startupShortcutError.value=String(e)})
+})
+onUnmounted(()=>{disposed=true;clearInterval(timer);removeShortcutListener?.()})
 async function configure(enabled=store.settings.launcher.enabled,minimalMode=store.settings.launcher.minimal_mode,saveShortcut=false){saving.value=true;try{store.settings=await api.configureLauncher({...store.settings.launcher,enabled,shortcut:saveShortcut?shortcut.value.trim():store.settings.launcher.shortcut,minimal_mode:minimalMode});shortcutError.value='';startupShortcutError.value='';store.notify('快捷启动设置已保存')}catch(e){shortcutError.value=String(e)}finally{saving.value=false}}
 async function backupOptions(value:Partial<typeof store.settings.auto_backup>){try{await store.setSetting('auto_backup',{...store.settings.auto_backup,...value});await refresh()}catch{}}
 async function backupNow(){backupBusy.value=true;try{await store.flushPendingSaves();await api.runAutoBackup();await refresh();store.notify('自动备份已创建')}catch(e){store.notify(String(e))}finally{backupBusy.value=false}}
@@ -119,12 +148,36 @@ function date(value:string|null){return value?new Date(value).toLocaleString('zh
     <FieldGroup><Field><FieldLabel class="text-base font-semibold" for="backup-enabled">启用定期备份</FieldLabel><div class="flex items-center"><Switch id="backup-enabled" :model-value="store.settings.auto_backup.enabled" @update:model-value="enabled=>backupOptions({enabled})"/></div></Field>
     <Field><FieldLabel class="text-base font-semibold" for="backup-interval">备份周期</FieldLabel><Select :model-value="String(store.settings.auto_backup.interval_hours)" @update:model-value="value=>backupOptions({interval_hours:Number(value)})"><SelectTrigger id="backup-interval" class="w-full max-w-xs"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="24">每天</SelectItem><SelectItem value="168">每周</SelectItem></SelectGroup></SelectContent></Select></Field>
     <Field><FieldLabel class="text-base font-semibold" for="backup-retain">保留最近几份自动备份</FieldLabel><Input id="backup-retain" class="max-w-xs" type="number" min="1" max="30" :model-value="store.settings.auto_backup.retain" @change="backupOptions({retain:Number(($event.target as HTMLInputElement).value)})"/><FieldDescription>1–30 份，仅清理旧的自动备份；手动备份和恢复前备份会保留。</FieldDescription></Field>
-    <p class="text-sm text-muted-foreground">最近备份：{{ date(status?.last_backup??null) }} · {{ status?.count??0 }} 份</p><p class="break-all text-xs text-muted-foreground">{{ status?.directory }}</p><p v-if="status?.error" class="text-sm text-destructive">{{ status.error }}</p><FieldDescription>程序启动和运行期间每分钟检查一次；错过周期会在下次启动补备份。</FieldDescription><div class="flex flex-wrap gap-2"><Button variant="outline" :disabled="backupBusy" @click="backupNow">{{ backupBusy?'正在备份…':'立即备份' }}</Button><Button variant="outline" :disabled="backupBusy" @click="emit('restoreBackup')">选择备份恢复</Button></div></FieldGroup>
+    <p class="text-sm text-muted-foreground">最近备份：{{ date(status?.last_backup??null) }} · {{ status?.count??0 }} 份</p><p class="break-all text-xs text-muted-foreground">{{ status?.directory }}</p><p v-if="backupError||status?.error" class="text-sm text-destructive" role="alert">{{ backupError||status?.error }}</p><FieldDescription>程序启动和运行期间每分钟检查一次；错过周期会在下次启动补备份。</FieldDescription><div class="flex flex-wrap gap-2"><Button variant="outline" :disabled="backupBusy" @click="backupNow">{{ backupBusy?'正在备份…':'立即备份' }}</Button><Button variant="outline" :disabled="backupBusy" @click="emit('restoreBackup')">选择备份恢复</Button></div></FieldGroup>
   </div>
-  <div v-if="props.section==='trash'||props.section==='all'" class="flex min-h-0 flex-1 flex-col gap-6">
-    <div class="flex justify-end"><Button variant="outline" size="sm" :disabled="!trash.length||trashBusy" @click="askPurge(null)">清空回收站</Button></div>
-    <p v-if="loading||error" class="text-sm text-muted-foreground">{{ error||'正在读取…' }}</p><div v-else-if="!trash.length" class="flex min-h-40 flex-1 items-center justify-center text-sm text-muted-foreground" role="status">回收站空空如也</div>
-    <div v-if="trash.length" class="flex flex-col gap-2"><div v-for="item in trash" :key="item.id" class="flex items-center gap-3 rounded-xl bg-muted/50 p-3"><div class="min-w-0 flex-1"><p class="truncate text-sm font-medium">{{ item.title||'无标题' }}</p><p class="text-xs text-muted-foreground">{{ kindNames[item.kind] }} · 删除于 {{ date(item.deleted_at) }}</p></div><Button size="sm" variant="outline" :disabled="trashBusy" @click="restore(item)"><RotateCcw data-icon="inline-start"/>恢复</Button><Button variant="danger" size="icon" :disabled="trashBusy" aria-label="永久删除" @click="askPurge(item.id)"><Trash2/></Button></div></div>
+  <div v-if="props.section==='trash'||props.section==='all'" class="flex min-h-0 flex-1 flex-col gap-4">
+    <form class="flex flex-wrap items-end gap-3" role="search" aria-label="搜索回收站" @submit.prevent="searchTrash">
+      <FieldGroup class="flex w-full flex-row flex-wrap items-end gap-3 sm:w-auto sm:flex-1">
+        <Field class="w-full sm:w-36"><FieldLabel for="trash-kind">类型</FieldLabel><Select v-model="trashKind"><SelectTrigger id="trash-kind" class="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem value="all">全部类型</SelectItem><SelectItem v-for="(name,kind) in kindNames" :key="kind" :value="kind">{{ name }}</SelectItem></SelectGroup></SelectContent></Select></Field>
+        <Field class="w-full sm:w-auto sm:min-w-48 sm:flex-1 sm:max-w-sm"><FieldLabel for="trash-query">关键词</FieldLabel><Input id="trash-query" v-model="trashQuery" placeholder="搜索内容标题" /></Field>
+      </FieldGroup>
+      <Button type="submit"><Search data-icon="inline-start" />查询</Button><Button type="button" variant="outline" @click="resetTrash"><RotateCcw data-icon="inline-start" />重置</Button>
+      <Button type="button" variant="outline" class="sm:ml-auto" :disabled="loading||!trash.length||trashBusy" @click="askPurge(null)">清空回收站</Button>
+    </form>
+    <p v-if="loading||error" class="text-sm text-muted-foreground" role="status">{{ error||'正在读取…' }}</p>
+    <template v-else>
+      <Empty v-if="!filteredTrash.length" class="min-h-48" role="status"><EmptyHeader><EmptyMedia variant="icon"><Trash2 /></EmptyMedia><EmptyTitle>{{ trash.length?'没有匹配的内容':'回收站空空如也' }}</EmptyTitle><EmptyDescription>{{ trash.length?'试试其他类型或关键词，或重置筛选条件。':'删除的笔记、便签和倒数日会显示在这里。' }}</EmptyDescription></EmptyHeader><Button v-if="trash.length" variant="outline" @click="resetTrash">重置筛选</Button></Empty>
+      <ul v-else class="flex min-h-0 flex-1 flex-col gap-2" :aria-busy="trashBusy" aria-label="回收站内容">
+        <li v-for="item in pagedTrash" :key="item.id" class="flex items-center gap-3 rounded-xl bg-muted/50 px-4 py-3">
+          <div class="min-w-0 flex-1"><p class="truncate text-sm font-medium" :title="item.title||'无标题'">{{ item.title||'无标题' }}</p><p class="mt-1 text-xs text-muted-foreground">{{ kindNames[item.kind] }} · 删除于 {{ date(item.deleted_at) }}</p></div>
+          <div class="flex shrink-0 items-center gap-1"><Button size="icon-sm" variant="ghost" :disabled="trashBusy" aria-label="恢复" @click="restore(item)"><RotateCcw /></Button><Button variant="danger" size="icon-sm" :disabled="trashBusy" aria-label="永久删除" @click="askPurge(item.id)"><Trash2 /></Button></div>
+        </li>
+      </ul>
+      <div v-if="trash.length" class="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
+        <p class="text-xs text-muted-foreground" role="status">共 {{ filteredTrash.length }} 条<span v-if="filteredTrash.length"> · 第 {{ (trashPage-1)*trashPageSize+1 }}–{{ Math.min(trashPage*trashPageSize,filteredTrash.length) }} 条</span></p>
+        <div class="flex flex-wrap items-center gap-3">
+          <Select :model-value="String(trashPageSize)" @update:model-value="value=>trashPageSize=Number(value)"><SelectTrigger class="w-28" aria-label="每页条数"><SelectValue /></SelectTrigger><SelectContent><SelectGroup><SelectItem v-for="size in [10,20,50]" :key="size" :value="String(size)">{{ size }} 条 / 页</SelectItem></SelectGroup></SelectContent></Select>
+          <Pagination v-if="filteredTrash.length" v-model:page="trashPage" :total="filteredTrash.length" :items-per-page="trashPageSize" :sibling-count="0" show-edges class="mx-0 w-auto" aria-label="回收站分页">
+            <PaginationContent v-slot="{ items }"><PaginationPrevious size="icon-sm" aria-label="上一页"><ChevronLeft /></PaginationPrevious><template v-for="(pageItem,index) in items" :key="index"><PaginationItem v-if="pageItem.type==='page'" :value="pageItem.value" :is-active="pageItem.value===trashPage" size="icon-sm" :aria-label="`第 ${pageItem.value} 页`">{{ pageItem.value }}</PaginationItem><PaginationEllipsis v-else /></template><PaginationNext size="icon-sm" aria-label="下一页"><ChevronRight /></PaginationNext></PaginationContent>
+          </Pagination>
+        </div>
+      </div>
+    </template>
   </div>
   <ConfirmDialog v-model:open="purgeOpen" :title="purgeId?'永久删除这条内容？':'清空回收站？'" description="此操作无法撤销。需要的内容请先恢复，或创建备份。" destructive confirm-text="永久删除" @confirm="purge"/>
 </template>

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { Folder, Plus, Pencil, Search, Trash2, Pin } from '@lucide/vue'
-import { api } from '@/lib/api'
-import { askConfirmation } from '@/lib/confirm'
+import { useGroupOperations } from '@/lib/group-operations'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -13,19 +12,20 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 const opened=defineModel<boolean>('open',{default:false})
 const store=useWorkspaceStore()
+const groupOperations=useGroupOperations()
 const newGroupName=ref(''),busy=ref(false),query=ref(''),formOpen=ref(false),editingId=ref('')
 const filteredGroups=computed(()=>store.groups.filter(group=>group.name.toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())))
 function openForm(id='',name=''){editingId.value=id;newGroupName.value=name;formOpen.value=true}
 async function submitForm(){if(editingId.value){const group=store.groups.find(item=>item.id===editingId.value);if(group){names[group.id]=newGroupName.value;await renameGroup(group.id,group.name)}}else await createGroup()}
 
-async function pinGroup(id:string){busy.value=true;try{await store.saveClient('lumo-launcher-pinned-group',store.settings.client?.['lumo-launcher-pinned-group']===id?null:id);store.notify('快捷启动固定分组已更新')}catch(e){store.notify(String(e))}finally{busy.value=false}}
+async function pinGroup(id:string){if(busy.value)return;busy.value=true;try{await store.saveClient('lumo-launcher-pinned-group',store.settings.client?.['lumo-launcher-pinned-group']===id?null:id);store.notify('快捷启动固定分组已更新')}catch(e){store.notify(String(e))}finally{busy.value=false}}
 const names=reactive<Record<string,string>>({})
 
 async function createGroup(){
   const name=newGroupName.value.trim()
   if(!name||busy.value)return
   busy.value=true
-  try{await api.createGroup(name);newGroupName.value='';store.groups=await api.listGroups();formOpen.value=false;query.value='';store.notify('分组已创建')}
+  try{await groupOperations.create(name);newGroupName.value='';formOpen.value=false;query.value='';store.notify('分组已创建')}
   catch(error){store.notify(`创建分组失败：${String(error)}`)}
   finally{busy.value=false}
 }
@@ -34,14 +34,14 @@ async function renameGroup(id:string,currentName:string){
   if(!name||busy.value)return
   if(name===currentName){formOpen.value=false;return}
   busy.value=true
-  try{await api.renameGroup(id,name);delete names[id];store.groups=await api.listGroups();formOpen.value=false;store.notify('分组名称已更新')}
+  try{await groupOperations.rename(id,name);delete names[id];formOpen.value=false;store.notify('分组名称已更新')}
   catch(error){store.notify(`重命名分组失败：${String(error)}`)}
   finally{busy.value=false}
 }
 async function removeGroup(id:string,name:string){
-  if(!await askConfirmation(`删除“${name}”分组？其中的启动项会移至未分组。`))return
+  if(busy.value)return
   busy.value=true
-  try{await api.deleteGroup(id);if(store.settings.client?.['lumo-launcher-pinned-group']===id)await store.saveClient('lumo-launcher-pinned-group',null);delete names[id];await store.reload();store.notify('分组已删除')}
+  try{if(await groupOperations.remove(id,name)){delete names[id];store.notify('分组已删除')}}
   catch(error){store.notify(`删除分组失败：${String(error)}`)}
   finally{busy.value=false}
 }
