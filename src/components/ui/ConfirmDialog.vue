@@ -9,15 +9,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import { buttonVariants } from '@/components/ui/button'
+} from '@/components/ui/alert-dialog';
+import { buttonVariants } from '@/components/ui/button';
 
-withDefaults(defineProps<{ title: string; description: string; confirmText?: string; destructive?: boolean }>(), {
-  confirmText: '确认',
-  destructive: false,
-})
-const emit = defineEmits<{ confirm: [] }>()
-const open = defineModel<boolean>('open')
+withDefaults(
+  defineProps<{
+    title: string;
+    description: string;
+    confirmText?: string;
+    destructive?: boolean;
+  }>(),
+  {
+    confirmText: '确认',
+    destructive: false,
+  },
+);
+const emit = defineEmits<{ confirm: [] }>();
+const open = defineModel<boolean>('open');
 </script>
 
 <template>
@@ -26,11 +34,17 @@ const open = defineModel<boolean>('open')
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>{{ title }}</AlertDialogTitle>
-        <AlertDialogDescription class="whitespace-pre-wrap">{{ description }}</AlertDialogDescription>
+        <AlertDialogDescription class="whitespace-pre-wrap">{{
+          description
+        }}</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>取消</AlertDialogCancel>
-        <AlertDialogAction :class="destructive ? buttonVariants({ variant: 'destructive' }) : undefined" @click="emit('confirm')">{{ confirmText }}</AlertDialogAction>
+        <AlertDialogAction
+          :class="destructive ? buttonVariants({ variant: 'destructive' }) : undefined"
+          @click="emit('confirm')"
+          >{{ confirmText }}</AlertDialogAction
+        >
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

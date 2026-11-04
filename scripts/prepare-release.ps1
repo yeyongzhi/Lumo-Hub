@@ -17,7 +17,7 @@ $installerName = "Lumo-Hub_${version}_x64-setup.exe"
 $installerPath = Join-Path $bundleDir $installerName
 $signaturePath = "$installerPath.sig"
 if (!(Test-Path -LiteralPath $installerPath -PathType Leaf)) {
-    throw "找不到安装包：$installerPath。请先执行 npm run tauri:build。"
+    throw "找不到安装包：$installerPath。请先执行 pnpm run tauri:build。"
 }
 if (!(Test-Path -LiteralPath $signaturePath -PathType Leaf)) {
     throw "找不到签名文件：$signaturePath。请检查 Tauri updater 签名配置。"

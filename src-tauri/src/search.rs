@@ -3,12 +3,13 @@ use pinyin::ToPinyin;
 use rusqlite::Connection;
 use tauri::State;
 
-pub fn matches(name: &str, aliases: &str, target: &str, query: &str) -> bool {
-    let query = query.trim().to_lowercase();
-    if query.is_empty() {
-        return true;
+fn phonetic_keys(text: &str) -> (String, String) {
+    use std::{collections::HashMap, sync::{Mutex, OnceLock}};
+    static CACHE: OnceLock<Mutex<HashMap<String, (String, String)>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(cache) = cache.lock() {
+        if let Some(keys) = cache.get(text) { return keys.clone(); }
     }
-    let text = format!("{name} {aliases}").to_lowercase();
     let mut initials = String::new();
     let mut full = String::new();
     for ch in text.chars() {
@@ -21,6 +22,21 @@ pub fn matches(name: &str, aliases: &str, target: &str, query: &str) -> bool {
             full.push(ch);
         }
     }
+    let keys = (initials, full);
+    if let Ok(mut cache) = cache.lock() {
+        if cache.len() >= 4096 { cache.clear(); }
+        cache.insert(text.to_string(), keys.clone());
+    }
+    keys
+}
+
+pub fn matches(name: &str, aliases: &str, target: &str, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return true;
+    }
+    let text = format!("{name} {aliases}").to_lowercase();
+    let (initials, full) = phonetic_keys(&text);
     text.contains(&query)
         || target.to_lowercase().contains(&query)
         || initials.contains(&query)
@@ -88,6 +104,13 @@ pub fn find_all(db:&Connection,query:&str)->Result<Vec<SearchResult>,String>{
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cached_phonetic_keys_follow_name_and_alias_edits() {
+        assert!(matches("计算器", "算术", "", "jsq"));
+        assert!(matches("计算器", "算术", "", "suan"));
+        assert!(!matches("笔记", "记录", "", "jsq"));
+        assert!(matches("笔记", "记录", "", "biji"));
+    }
     #[test] fn unified_search_contains_stickies_and_literal_patterns(){
         let db=crate::db::open(std::path::Path::new(":memory:")).unwrap();
         db.execute("INSERT INTO stickies(id,title,content,created_at,updated_at) VALUES('s','旅行清单','买票','now','now')",[]).unwrap();

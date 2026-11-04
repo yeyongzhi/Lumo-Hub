@@ -258,6 +258,7 @@ pub fn save_tags(root: &Path, s: &AppSettings) -> Result<(), String> {
         .flatten()
         .cloned()
         .collect::<Vec<_>>();
+    catalog.extend(s.product.tag_catalog.iter().cloned());
     catalog.sort();
     catalog.dedup();
     atomic(
@@ -277,11 +278,7 @@ pub fn load_tags(root: &Path, s: &mut AppSettings) -> Result<(), String> {
         let catalog: Vec<String> =
             serde_json::from_slice(&fs::read(root.join("tags.json")).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
-        for (i, tags) in catalog.chunks(20).enumerate() {
-            s.product
-                .note_tags
-                .insert(format!("__tag_catalog__{i}"), tags.to_vec());
-        }
+        s.product.tag_catalog = catalog;
     }
     Ok(())
 }
@@ -301,6 +298,19 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+    #[test]
+    fn unused_tag_catalog_survives_file_roundtrip() {
+        let root = Folder::new();
+        fs::create_dir_all(root.0.join("notes")).unwrap();
+        fs::write(root.0.join("notes/.migrated"), "").unwrap();
+        let mut settings = AppSettings::default();
+        settings.product.tag_catalog = vec!["unused".into()];
+        save_tags(&root.0, &settings).unwrap();
+        let mut restored = AppSettings::default();
+        load_tags(&root.0, &mut restored).unwrap();
+        assert_eq!(restored.product.tag_catalog, vec!["unused"]);
+        assert!(restored.product.note_tags.is_empty());
     }
     #[test]
     fn migration_and_frontmatter_roundtrip() {

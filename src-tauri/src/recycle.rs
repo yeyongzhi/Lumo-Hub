@@ -85,9 +85,9 @@ pub fn trash_note(conn: &mut Connection, root: &std::path::Path, id: &str) -> Re
 pub fn list_trash(state: State<'_, AppState>) -> Result<Vec<Value>, String> {
     let conn = state.db.lock().map_err(|_| "数据库不可用")?;
     let mut s = conn
-        .prepare("SELECT id,kind,title,deleted_at FROM recycle_bin ORDER BY deleted_at DESC")
+        .prepare("SELECT id,kind,title,deleted_at,json_extract(payload,'$.id') FROM recycle_bin ORDER BY deleted_at DESC")
         .map_err(|e| e.to_string())?;
-    let rows=s.query_map([],|r|Ok(serde_json::json!({"id":r.get::<_,String>(0)?,"kind":r.get::<_,String>(1)?,"title":r.get::<_,String>(2)?,"deleted_at":r.get::<_,String>(3)?}))).map_err(|e|e.to_string())?;
+    let rows=s.query_map([],|r|Ok(serde_json::json!({"id":r.get::<_,String>(0)?,"kind":r.get::<_,String>(1)?,"title":r.get::<_,String>(2)?,"deleted_at":r.get::<_,String>(3)?,"original_id":r.get::<_,String>(4)?}))).map_err(|e|e.to_string())?;
     rows.collect::<rusqlite::Result<Vec<_>>>()
         .map_err(|e| e.to_string())
 }

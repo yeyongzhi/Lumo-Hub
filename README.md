@@ -8,7 +8,9 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 [产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
-> 当前代码版本：**0.0.1-beta.7（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.8（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+
+[查看本次测试版 v0.0.1-beta.8](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.8) · [查看全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
 ## 一个工作台，容纳常用日常
 
@@ -65,6 +67,15 @@ pnpm build
 pnpm tauri:build
 pnpm docs:build
 ```
+
+项目统一使用 pnpm 和 `pnpm-lock.yaml`。提交前运行：
+
+```sh
+pnpm check
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+`pnpm check` 包含 ESLint、Prettier 格式检查、前端回归测试、类型检查和生产构建。可用 `pnpm format` 统一前端格式，或单独运行 `pnpm test`、`pnpm lint`、`pnpm typecheck`。GitHub Actions 在推送和 Pull Request 时执行相同检查；依赖网络或本机安装环境的 Rust 测试默认跳过。
 
 安装包构建需要项目的 Tauri 更新签名配置。详细说明参见[开发说明书](docs/开发说明书.md)、[技术方案](docs/技术方案.md)和[安装说明](docs/install.md)。
 

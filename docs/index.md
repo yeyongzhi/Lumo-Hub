@@ -41,6 +41,6 @@ features:
 </div>
 
 <div class="product-note">
-  <strong>当前代码版本：0.0.1-beta.7</strong>
+  <strong>当前代码版本：0.0.1-beta.8</strong>
   <span>目前提供 Windows 测试版。安装前请备份重要内容，并通过 GitHub Issues 反馈问题。</span>
 </div>

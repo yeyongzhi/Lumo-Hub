@@ -256,9 +256,9 @@ pub fn set_setting(
         }
         "product" => {
             let options: ProductSettings=serde_json::from_value(value).map_err(|_|"偏好设置无效")?;
-            if options.reminder_hour>23 || options.reminders.len()>10000 || options.reminders.values().any(|days|days.len()>3||days.iter().any(|day|![0,1,7].contains(day))) || options.note_tags.values().any(|tags|tags.len()>20||tags.iter().any(|tag|tag.len()>120)) {return Err("提醒或标签设置无效".into())}
+            if options.tag_catalog.len()>10000 || options.tag_catalog.iter().any(|tag|tag.len()>120) || options.reminder_hour>23 || options.reminders.len()>10000 || options.reminders.values().any(|days|days.len()>3||days.iter().any(|day|![0,1,7].contains(day))) || options.note_tags.values().any(|tags|tags.len()>20||tags.iter().any(|tag|tag.len()>120)) {return Err("提醒或标签设置无效".into())}
             if options.autostart != settings.product.autostart {crate::desktop::autostart(options.autostart)?;}
-            if options.note_tags!=settings.product.note_tags {crate::note_files::save_tags(&data_root(&state)?,&AppSettings{product:options.clone(),..settings.clone()})?;}settings.product=options;
+            if options.note_tags!=settings.product.note_tags || options.tag_catalog!=settings.product.tag_catalog {crate::note_files::save_tags(&data_root(&state)?,&AppSettings{product:options.clone(),..settings.clone()})?;}settings.product=options;
         }
         "theme_mode" => {
             let v = value.as_str().ok_or("主题模式无效")?;

@@ -1,5 +1,6 @@
 use serde_json::Value;
-use std::time::Duration;
+use std::{time::Duration, sync::OnceLock};
+static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 #[tauri::command]
 pub async fn fetch_home_feed(kind: String, city: Option<String>) -> Result<Value, String> {
@@ -18,11 +19,14 @@ pub async fn fetch_home_feed(kind: String, city: Option<String>) -> Result<Value
         if !city.is_empty() { url.path_segments_mut().map_err(|_| "天气地址无效")?.push(city); }
         url.query_pairs_mut().append_pair("format", "j1").append_pair("lang", "zh");
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .connect_timeout(Duration::from_secs(8))
-        .user_agent("Lumo-Hub/0.1.2-beta.0")
-        .build().map_err(|_| "无法创建网络连接")?;
+    let client = if let Some(client) = CLIENT.get() { client } else {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(8))
+            .user_agent(concat!("Lumo-Hub/", env!("CARGO_PKG_VERSION")))
+            .build().map_err(|_| "无法创建网络连接")?;
+        CLIENT.get_or_init(|| client)
+    };
     let response = client.get(url).send().await.map_err(|e| if e.is_timeout() { "请求超时，请稍后刷新".to_string() } else { "网络连接失败，请检查网络后刷新".to_string() })?
         .error_for_status().map_err(|e| format!("服务暂不可用：{}", e.status().map(|s| s.as_u16()).unwrap_or(0)))?;
     response.json::<Value>().await.map_err(|_| "接口返回了无效的数据，请稍后刷新".into())

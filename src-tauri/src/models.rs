@@ -27,10 +27,11 @@ pub struct ProductSettings {
     pub reminder_hour: u8,
     pub reminders: std::collections::HashMap<String, Vec<i64>>,
     pub pinned_stickies: Vec<String>,
+    pub tag_catalog: Vec<String>,
     pub note_tags: std::collections::HashMap<String, Vec<String>>,
 }
 impl Default for ProductSettings {
-    fn default()->Self { Self {close_to_tray:true,autostart:false,reminder_hour:9,reminders:Default::default(),pinned_stickies:vec![],note_tags:Default::default()} }
+    fn default()->Self { Self {close_to_tray:true,autostart:false,reminder_hour:9,reminders:Default::default(),pinned_stickies:vec![],note_tags:Default::default(),tag_catalog:vec![]} }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

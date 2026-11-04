@@ -1,30 +1,55 @@
-import { findTools } from './tools'
-import { invoke } from '@tauri-apps/api/core'
-import type { ResourceKind, LaunchOptions } from './types'
-import type { AppSettings, BootstrapInfo, Countdown, Note, Resource, ResourceGroup, ScanCandidate, SearchResult, Sticky, TrashItem, BackupStatus } from './types'
+import { rankSearchResults } from './search-ranking';
+import { findTools } from './tools';
+import { invoke } from '@tauri-apps/api/core';
+import type { ResourceKind, LaunchOptions } from './types';
+import type {
+  AppSettings,
+  BootstrapInfo,
+  Countdown,
+  Note,
+  Resource,
+  ResourceGroup,
+  ScanCandidate,
+  SearchResult,
+  Sticky,
+  TrashItem,
+  BackupStatus,
+} from './types';
 
 export const api = {
-  findDuplicate: (kind:ResourceKind,target:string,exclude:string|null=null) => invoke<string|null>('find_duplicate',{kind,target,exclude}),
-  previewTargets: (paths:string[]) => invoke<{name:string;target:string;kind:ResourceKind;icon_data:string|null}[]>('preview_targets',{paths}),
-  saveLaunchOptions: (id:string,options:LaunchOptions) => invoke<void>('save_launch_options',{id,options}),
-  readIcon: (path:string) => invoke<string>('read_icon',{path}),
-  reorderGroups: (ids:string[]) => invoke<void>('reorder_groups',{ids}),
-  resourceHealth: () => invoke<Record<string,boolean>>('resource_health'),
+  findDuplicate: (kind: ResourceKind, target: string, exclude: string | null = null) =>
+    invoke<string | null>('find_duplicate', { kind, target, exclude }),
+  previewTargets: (paths: string[]) =>
+    invoke<{ name: string; target: string; kind: ResourceKind; icon_data: string | null }[]>(
+      'preview_targets',
+      { paths },
+    ),
+  saveLaunchOptions: (id: string, options: LaunchOptions) =>
+    invoke<void>('save_launch_options', { id, options }),
+  readIcon: (path: string) => invoke<string>('read_icon', { path }),
+  reorderGroups: (ids: string[]) => invoke<void>('reorder_groups', { ids }),
+  resourceHealth: () => invoke<Record<string, boolean>>('resource_health'),
   closeMain: () => invoke<void>('close_main'),
-  exportMarkdown: (id:string,path:string) => invoke<void>('export_markdown',{id,path}),
-  resourcePublishers: () => invoke<Record<string,string>>('resource_publishers'),
+  exportMarkdown: (id: string, path: string) => invoke<void>('export_markdown', { id, path }),
+  resourcePublishers: () => invoke<Record<string, string>>('resource_publishers'),
   fetchHomeFeed: (kind: string, city = '') => invoke<unknown>('fetch_home_feed', { kind, city }),
   commonLauncherIcons: () => invoke<Record<string, string>>('common_launcher_icons'),
   launchCommon: (id: string) => invoke<void>('launch_common', { id }),
   searchResources: (query: string) => invoke<SearchResult[]>('search_resources', { query }),
   openStartupView: () => invoke<void>('open_startup_view'),
-  openMainPage: (page: string = 'home', id: string | null = null) => invoke<void>('open_main_page', { page, id }),
+  openMainPage: (page: string = 'home', id: string | null = null) =>
+    invoke<void>('open_main_page', { page, id }),
   showLauncher: () => invoke<void>('show_launcher'),
   hideLauncher: () => invoke<void>('hide_launcher'),
-  configureLauncher: (value: AppSettings['launcher']) => invoke<AppSettings>('configure_launcher', { value }),
+  configureLauncher: (value: AppSettings['launcher']) =>
+    invoke<AppSettings>('configure_launcher', { value }),
   launcherStatus: () => invoke<string | null>('launcher_status'),
   revealResource: (id: string) => invoke<void>('reveal_resource', { id }),
-  batchResources: (ids: string[], action: 'move' | 'delete' | 'favorite' | 'unfavorite', groupId: string | null = null) => invoke<void>('batch_resources', { ids, action, groupId }),
+  batchResources: (
+    ids: string[],
+    action: 'move' | 'delete' | 'favorite' | 'unfavorite',
+    groupId: string | null = null,
+  ) => invoke<void>('batch_resources', { ids, action, groupId }),
   listTrash: () => invoke<TrashItem[]>('list_trash'),
   restoreTrash: (id: string) => invoke<void>('restore_trash', { id }),
   purgeTrash: (id: string | null) => invoke<void>('purge_trash', { id }),
@@ -32,41 +57,73 @@ export const api = {
   runAutoBackup: () => invoke<string | null>('run_auto_backup'),
   testReminderNotification: () => invoke<string>('test_notification'),
   openNotificationSettings: () => invoke<void>('open_notification_settings'),
-  bootstrap: () => invoke<{ bootstrap: BootstrapInfo; settings: AppSettings; clean_uninstall: boolean; recovery_error: string | null }>('bootstrap_state'),
-  recoverDataDirectory: (newPath: string) => invoke<BootstrapInfo>('recover_data_directory', { newPath }),
+  bootstrap: () =>
+    invoke<{
+      bootstrap: BootstrapInfo;
+      settings: AppSettings;
+      clean_uninstall: boolean;
+      recovery_error: string | null;
+    }>('bootstrap_state'),
+  recoverDataDirectory: (newPath: string) =>
+    invoke<BootstrapInfo>('recover_data_directory', { newPath }),
   cleanUninstall: () => invoke<void>('clean_uninstall'),
-  setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => invoke<AppSettings>('set_setting', { key, value }),
+  setSetting: (key: keyof AppSettings, value: AppSettings[keyof AppSettings]) =>
+    invoke<AppSettings>('set_setting', { key, value }),
   completeWelcome: () => invoke<AppSettings>('complete_welcome'),
   listNotes: () => invoke<Note[]>('list_notes'),
   noteFileIssues: () => invoke<string[]>('note_file_issues'),
-  createNote: (title: string, content='') => invoke<Note>('create_note', { title, content }),
-  updateNote: (id: string, title: string, content: string) => invoke<void>('update_note', { id, title, content }),
+  createNote: (title: string, content = '') => invoke<Note>('create_note', { title, content }),
+  updateNote: (id: string, title: string, content: string) =>
+    invoke<void>('update_note', { id, title, content }),
   deleteNote: (id: string) => invoke<void>('delete_note', { id }),
   listStickies: () => invoke<Sticky[]>('list_stickies'),
-  createSticky: (title: string, content='') => invoke<Sticky>('create_sticky', { title, content }),
-  updateSticky: (id: string, title: string, content: string) => invoke<void>('update_sticky', { id, title, content }),
+  createSticky: (title: string, content = '') =>
+    invoke<Sticky>('create_sticky', { title, content }),
+  updateSticky: (id: string, title: string, content: string) =>
+    invoke<void>('update_sticky', { id, title, content }),
   deleteSticky: (id: string) => invoke<void>('delete_sticky', { id }),
   listCountdowns: () => invoke<Countdown[]>('list_countdowns'),
-  createCountdown: (value: Pick<Countdown, 'title' | 'description' | 'target_date' | 'repeat_type'>) => invoke<Countdown>('create_countdown', { value }),
+  createCountdown: (
+    value: Pick<Countdown, 'title' | 'description' | 'target_date' | 'repeat_type'>,
+  ) => invoke<Countdown>('create_countdown', { value }),
   updateCountdown: (value: Countdown) => invoke<void>('update_countdown', { value }),
   deleteCountdown: (id: string) => invoke<void>('delete_countdown', { id }),
   listResources: () => invoke<Resource[]>('list_resources'),
   listGroups: () => invoke<ResourceGroup[]>('list_groups'),
-  createResource: (value: Pick<Resource, 'name' | 'kind' | 'target' | 'group_id' | 'aliases'> & {allow_duplicate?:boolean}) => invoke<Resource>('create_resource', { value }),
+  createResource: (
+    value: Pick<Resource, 'name' | 'kind' | 'target' | 'group_id' | 'aliases'> & {
+      allow_duplicate?: boolean;
+    },
+  ) => invoke<Resource>('create_resource', { value }),
   updateResource: (value: Resource) => invoke<void>('update_resource', { value }),
   deleteResource: (id: string) => invoke<void>('delete_resource', { id }),
   toggleFavorite: (id: string) => invoke<void>('toggle_favorite', { id }),
   createGroup: (name: string) => invoke<ResourceGroup>('create_group', { name }),
   renameGroup: (id: string, name: string) => invoke<void>('rename_group', { id, name }),
   deleteGroup: (id: string) => invoke<void>('delete_group', { id }),
-  moveResource: (resourceId: string, groupId: string | null) => invoke<void>('move_resource', { resourceId, groupId }),
+  moveResource: (resourceId: string, groupId: string | null) =>
+    invoke<void>('move_resource', { resourceId, groupId }),
   scanApplications: () => invoke<ScanCandidate[]>('scan_applications'),
-  importCandidates: (candidates: ScanCandidate[]) => invoke<number>('import_scan_candidates', { candidates }),
+  importCandidates: (candidates: ScanCandidate[]) =>
+    invoke<number>('import_scan_candidates', { candidates }),
   launchResource: (id: string) => invoke<string>('launch_resource', { id }),
-  relocateResource: (id: string, target: string) => invoke<void>('relocate_resource', { id, target }),
-  search: async (query: string): Promise<SearchResult[]> => [...findTools(query).map(t=>({id:'tool:'+t.id,title:t.title,subtitle:'内置工具 · '+t.description,kind:'resource' as const})), ...await invoke<SearchResult[]>('search_all', { query })],
+  relocateResource: (id: string, target: string) =>
+    invoke<void>('relocate_resource', { id, target }),
+  search: async (query: string): Promise<SearchResult[]> =>
+    rankSearchResults(
+      [
+        ...findTools(query).map((t) => ({
+          id: 'tool:' + t.id,
+          title: t.title,
+          subtitle: '内置工具 · ' + t.description,
+          kind: 'resource' as const,
+        })),
+        ...(await invoke<SearchResult[]>('search_all', { query })),
+      ],
+      query,
+    ),
   moveDataDirectory: (newPath: string) => invoke<BootstrapInfo>('move_data_directory', { newPath }),
   restoreDefaultDataDirectory: () => invoke<BootstrapInfo>('restore_default_data_directory'),
   exportBackup: (destination: string) => invoke<void>('export_backup', { destination }),
   restoreBackup: (source: string) => invoke<void>('restore_backup', { source }),
-}
+};

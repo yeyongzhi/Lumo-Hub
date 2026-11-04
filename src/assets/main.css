@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is([data-theme="dark"] *));
 
@@ -27,7 +27,7 @@
   --radius: 16px;
 }
 
-html[data-theme="dark"] {
+html[data-theme='dark'] {
   color-scheme: dark;
   --background: oklch(0.16 0.015 260);
   --foreground: oklch(0.94 0.008 260);
@@ -76,35 +76,98 @@ html[data-theme="dark"] {
 }
 
 @layer base {
-  * { @apply border-border; }
+  * {
+    @apply border-border;
+  }
 }
 
-* { box-sizing: border-box; }
-html { font-size: 14px; }
-html, body, #app { min-height: 100%; }
-body { @apply m-0 min-w-[760px] bg-background text-foreground antialiased; font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif; }
-button, input, textarea, select { font: inherit; }
-button { -webkit-tap-highlight-color: transparent; }
-::selection { background: color-mix(in oklch, var(--primary) 24%, transparent); }
+* {
+  box-sizing: border-box;
+}
+html {
+  font-size: 14px;
+}
+html,
+body,
+#app {
+  min-height: 100%;
+}
+body {
+  @apply m-0 min-w-0 bg-background text-foreground antialiased;
+  font-family: 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+::selection {
+  background: color-mix(in oklch, var(--primary) 24%, transparent);
+}
 
 /* Shared native scrollbars for page content, editors and horizontal group lists. */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply rounded-full bg-border; border: 2px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
-::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-border;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/40;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
-.markdown-preview > :first-child { @apply mt-0; }
-.markdown-preview > :last-child { @apply mb-0; }
-.markdown-preview h1 { @apply mb-4 mt-7 text-2xl font-semibold tracking-tight; }
-.markdown-preview h2 { @apply mb-3 mt-6 text-xl font-semibold tracking-tight; }
-.markdown-preview h3 { @apply mb-2 mt-5 text-lg font-semibold; }
-.markdown-preview p { @apply my-3; }
-.markdown-preview ul { @apply my-3 list-disc pl-6; }
-.markdown-preview ol { @apply my-3 list-decimal pl-6; }
-.markdown-preview blockquote { @apply my-4 border-l-2 border-primary pl-4 text-muted-foreground; }
-.markdown-preview pre { @apply my-4 overflow-auto rounded-xl bg-background p-4 text-xs leading-6; }
-.markdown-preview code { @apply rounded bg-background px-1 py-0.5 font-mono text-[0.9em]; }
-.markdown-preview pre code { @apply bg-transparent p-0; }
-.markdown-preview a { @apply text-primary underline underline-offset-4; }
-.markdown-preview hr { @apply my-6 border-border; }
+.markdown-preview > :first-child {
+  @apply mt-0;
+}
+.markdown-preview > :last-child {
+  @apply mb-0;
+}
+.markdown-preview h1 {
+  @apply mb-4 mt-7 text-2xl font-semibold tracking-tight;
+}
+.markdown-preview h2 {
+  @apply mb-3 mt-6 text-xl font-semibold tracking-tight;
+}
+.markdown-preview h3 {
+  @apply mb-2 mt-5 text-lg font-semibold;
+}
+.markdown-preview p {
+  @apply my-3;
+}
+.markdown-preview ul {
+  @apply my-3 list-disc pl-6;
+}
+.markdown-preview ol {
+  @apply my-3 list-decimal pl-6;
+}
+.markdown-preview blockquote {
+  @apply my-4 border-l-2 border-primary pl-4 text-muted-foreground;
+}
+.markdown-preview pre {
+  @apply my-4 overflow-auto rounded-xl bg-background p-4 text-xs leading-6;
+}
+.markdown-preview code {
+  @apply rounded bg-background px-1 py-0.5 font-mono text-[0.9em];
+}
+.markdown-preview pre code {
+  @apply bg-transparent p-0;
+}
+.markdown-preview a {
+  @apply text-primary underline underline-offset-4;
+}
+.markdown-preview hr {
+  @apply my-6 border-border;
+}

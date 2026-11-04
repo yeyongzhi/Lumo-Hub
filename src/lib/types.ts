@@ -1,106 +1,153 @@
-export type PageId = 'home' | 'countdowns' | 'stickies' | 'notes' | 'library' | 'settings'
+export type PageId = 'home' | 'countdowns' | 'stickies' | 'notes' | 'library' | 'settings';
 
 export interface Note {
-  id: string
-  title: string
-  content: string
-  created_at: string
-  updated_at: string
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Sticky {
-  id: string
-  title: string
-  content: string
-  created_at: string
-  updated_at: string
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Countdown {
-  id: string
-  title: string
-  description: string | null
-  target_date: string
-  repeat_type: 'once' | 'yearly'
-  created_at: string
-  updated_at: string
+  id: string;
+  title: string;
+  description: string | null;
+  target_date: string;
+  repeat_type: 'once' | 'yearly';
+  created_at: string;
+  updated_at: string;
 }
 
-export type ResourceKind = 'app' | 'web' | 'file'
+export type ResourceKind = 'app' | 'web' | 'file';
 
 export interface Resource {
-  id: string
-  name: string
-  kind: ResourceKind
-  target: string
-  group_id: string | null
-  is_favorite: boolean
-  icon_path: string | null
-  icon_data: string | null
-  aliases: string
-  usage_count: number
-  last_opened_at: string | null
-  created_at: string
-  updated_at: string
+  id: string;
+  name: string;
+  kind: ResourceKind;
+  target: string;
+  group_id: string | null;
+  is_favorite: boolean;
+  icon_path: string | null;
+  icon_data: string | null;
+  aliases: string;
+  usage_count: number;
+  last_opened_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ResourceGroup {
-  id: string
-  name: string
-  sort_order: number
+  id: string;
+  name: string;
+  sort_order: number;
 }
 
 export interface ScanCandidate {
-  imported: boolean
-  category: 'system' | 'extension' | 'application'
-  name: string
-  target: string
-  kind: ResourceKind
-  source: string
-  icon_data: string | null
-  installation_path: string | null
+  imported: boolean;
+  category: 'system' | 'extension' | 'application';
+  name: string;
+  target: string;
+  kind: ResourceKind;
+  source: string;
+  icon_data: string | null;
+  installation_path: string | null;
 }
 
-export type HomeWidgetKind = 'clock' | 'countdowns' | 'sticky' | 'note' | 'recent' | 'weather' | 'hitokoto' | 'news' | 'poetry' | 'library' | 'quick_launch' | 'quick_tools' | 'calendar' | 'time'
-export type HomeWidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '4x1'
-export interface HomeWidget { id: string; kind: HomeWidgetKind; size: HomeWidgetSize; selected_ids?: string[] }
+export type HomeWidgetKind =
+  | 'clock'
+  | 'countdowns'
+  | 'sticky'
+  | 'note'
+  | 'recent'
+  | 'weather'
+  | 'hitokoto'
+  | 'news'
+  | 'poetry'
+  | 'library'
+  | 'quick_launch'
+  | 'quick_tools'
+  | 'calendar'
+  | 'time';
+export type HomeWidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '4x1';
+export interface HomeWidget {
+  id: string;
+  kind: HomeWidgetKind;
+  size: HomeWidgetSize;
+  selected_ids?: string[];
+}
 
 export interface ProductSettings {
-  close_to_tray: boolean
-  autostart: boolean
-  reminder_hour: number
-  reminders: Record<string,number[]>
-  pinned_stickies: string[]
-  note_tags: Record<string,string[]>
+  close_to_tray: boolean;
+  autostart: boolean;
+  reminder_hour: number;
+  reminders: Record<string, number[]>;
+  pinned_stickies: string[];
+  tag_catalog: string[];
+  note_tags: Record<string, string[]>;
 }
-export interface AppSettings { client?:Record<string,unknown>
-  product: ProductSettings
-  theme_mode: 'light' | 'dark' | 'system'
-  accent: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'indigo' | 'violet'
-  font_size: number
-  border_radius: number
-  sidebar_width: number
-  common_launchers: string[]
-  welcome_completed: boolean
-  home_layout: HomeWidget[]
-  launcher: { enabled: boolean; shortcut: string; minimal_mode: boolean; window_width?: number | null; window_height?: number | null }
-  auto_backup: { enabled: boolean; interval_hours: number; retain: number }
+export interface AppSettings {
+  client?: Record<string, unknown>;
+  product: ProductSettings;
+  theme_mode: 'light' | 'dark' | 'system';
+  accent: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'indigo' | 'violet';
+  font_size: number;
+  border_radius: number;
+  sidebar_width: number;
+  common_launchers: string[];
+  welcome_completed: boolean;
+  home_layout: HomeWidget[];
+  launcher: {
+    enabled: boolean;
+    shortcut: string;
+    minimal_mode: boolean;
+    window_width?: number | null;
+    window_height?: number | null;
+  };
+  auto_backup: { enabled: boolean; interval_hours: number; retain: number };
 }
 
-export interface BootstrapInfo { data_follows_install?:boolean
-  data_dir: string
-  default_data_dir: string
+export interface BootstrapInfo {
+  data_follows_install?: boolean;
+  data_dir: string;
+  default_data_dir: string;
 }
 
 export interface SearchResult {
-  id: string
-  title: string
-  subtitle: string
-  kind: 'note' | 'sticky' | 'countdown' | 'resource'
+  id: string;
+  title: string;
+  subtitle: string;
+  kind: 'note' | 'sticky' | 'countdown' | 'resource';
 }
 
-export interface TrashItem { id: string; kind: 'note' | 'sticky' | 'countdown'; title: string; deleted_at: string }
-export interface BackupStatus { last_backup: string | null; count: number; directory: string; error: string | null }
+export interface TrashItem {
+  id: string;
+  original_id: string;
+  kind: 'note' | 'sticky' | 'countdown';
+  title: string;
+  deleted_at: string;
+}
+export interface BackupStatus {
+  last_backup: string | null;
+  count: number;
+  directory: string;
+  error: string | null;
+}
 
-export interface LaunchOptions { arguments: string[]; working_directory: string; icon_data: string|null }
-export interface LaunchScene { id:string; name:string; resource_ids:string[] }
+export interface LaunchOptions {
+  arguments: string[];
+  working_directory: string;
+  icon_data: string | null;
+}
+export interface LaunchScene {
+  id: string;
+  name: string;
+  resource_ids: string[];
+}
