@@ -8,9 +8,9 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 [产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
-> 当前代码版本：**0.0.1-beta.8（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.9（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
 
-[查看本次测试版 v0.0.1-beta.8](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.8) · [查看全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
+[查看本次测试版 v0.0.1-beta.9](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.9) · [查看全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
 ## 一个工作台，容纳常用日常
 
@@ -34,7 +34,7 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 ### 内置工具，点击即用
 
-快捷启动面板内置取色器与色板、文本和图片剪贴板历史、二维码生成与识别、文本工具箱、悬浮文本、时间戳和日历工具。支持中文名称与英文关键词搜索，例如 `color picker`、`clipboard`、`qrcode`。工具以独立窗口打开，可置顶；色板和悬浮文本保存在本机。
+快捷启动面板内置取色器与色板、文本和图片剪贴板历史、二维码生成与识别、文本工具箱、悬浮文本、时间戳、日历、JSON 工具、文本对比、番茄钟 / 计时器和单位换算。支持中文名称与英文关键词搜索，例如 `color picker`、`clipboard`、`qrcode`。工具以独立窗口打开，可置顶；色板和悬浮文本保存在本机。
 
 ## 下载与开始使用
 

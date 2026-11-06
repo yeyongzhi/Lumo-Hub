@@ -199,7 +199,7 @@ onMounted(async () => {
                 class="h-12 w-full rounded-md border"
                 :style="{ background: color.hex }"
               /><span class="text-xs">{{ color.name }}</span
-              ><span class="font-mono text-[10px] text-muted-foreground">{{
+              ><span class="font-mono text-[0.714rem] text-muted-foreground">{{
                 color.hex
               }}</span></Button
             >

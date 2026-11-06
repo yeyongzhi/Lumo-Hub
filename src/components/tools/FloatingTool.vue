@@ -2,12 +2,10 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
 import { readLocal, writeLocal } from '@/lib/local-files';
 const text = ref(''),
-  status = ref('正在读取…'),
-  ready = ref(false),
-  fontSize = ref(18);
+  error = ref(''),
+  ready = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined, removeClose: (() => void) | undefined;
 let queue = Promise.resolve();
 let editVersion = 0,
@@ -15,28 +13,26 @@ let editVersion = 0,
   closing = ref(false);
 function save() {
   const version = editVersion,
-    value = { text: text.value, fontSize: fontSize.value };
-  status.value = '保存中…';
+    value = { text: text.value };
   queue = queue
     .catch(() => {})
     .then(() => writeLocal('lumo-tool-floating', value))
     .then(
       () => {
-        if (!disposed && version === editVersion) status.value = '已自动保存';
+        if (!disposed && version === editVersion) error.value = '';
       },
       (e) => {
-        if (!disposed && version === editVersion) status.value = '保存失败：' + String(e);
+        if (!disposed && version === editVersion) error.value = '保存失败：' + String(e);
         throw e;
       },
     );
   return queue;
 }
 watch(
-  [text, fontSize],
+  text,
   () => {
     if (!ready.value) return;
     editVersion++;
-    status.value = '待保存';
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void save().catch(() => {}), 400);
   },
@@ -44,13 +40,9 @@ watch(
 );
 onMounted(async () => {
   try {
-    const value = await readLocal<{ text: string; fontSize: number }>('lumo-tool-floating');
+    const value = await readLocal<{ text: string }>('lumo-tool-floating');
     if (disposed) return;
-    if (value) {
-      text.value = value.text;
-      fontSize.value = value.fontSize;
-    }
-    status.value = '已自动保存';
+    if (value) text.value = value.text;
     const unlisten = await getCurrentWindow().onCloseRequested(async (event) => {
       event.preventDefault();
       if (closing.value || !ready.value) return;
@@ -70,7 +62,7 @@ onMounted(async () => {
     removeClose = unlisten;
     ready.value = true;
   } catch (e) {
-    if (!disposed) status.value = String(e);
+    if (!disposed) error.value = '初始化失败：' + String(e);
   }
 });
 onUnmounted(() => {
@@ -80,33 +72,14 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <div class="flex flex-col gap-3">
+  <div class="flex min-h-0 flex-1 flex-col gap-3 p-5">
     <Textarea
       v-model="text"
       :disabled="!ready || closing"
       placeholder="写下需要一直看见的内容…"
-      class="min-h-[calc(100dvh-190px)] resize-none border-0 bg-transparent leading-relaxed shadow-none focus-visible:ring-0"
-      :style="{ fontSize: fontSize + 'px' }"
+      class="field-sizing-fixed min-h-0 flex-1 resize-none border-0 bg-transparent leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent"
       aria-label="悬浮文本"
     />
-    <div class="flex items-center gap-2">
-      <span role="status" class="flex-1 text-xs text-muted-foreground">{{ status }}</span
-      ><Button
-        variant="ghost"
-        size="sm"
-        :disabled="!ready || closing || fontSize <= 12"
-        aria-label="缩小字号"
-        @click="fontSize -= 2"
-        >A−</Button
-      ><Button
-        variant="ghost"
-        size="sm"
-        :disabled="!ready || closing || fontSize >= 40"
-        aria-label="放大字号"
-        @click="fontSize += 2"
-        >A+</Button
-      >
-    </div>
-    <p class="text-xs text-muted-foreground">默认置顶；拖动标题栏移动窗口，点击图钉取消置顶。</p>
+    <p v-if="error" role="alert" class="text-xs break-words text-destructive">{{ error }}</p>
   </div>
 </template>

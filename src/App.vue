@@ -569,7 +569,7 @@ onUnmounted(() => {
       <p class="mt-8 text-xs text-muted-foreground">简洁、本地、属于你的工作台</p>
     </Card>
   </main>
-  <div v-else class="flex h-dvh flex-col overflow-hidden bg-background">
+  <div v-else class="flex h-dvh flex-col overflow-hidden border bg-background">
     <header
       class="relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 py-2 backdrop-blur"
       @mousedown="startWindowDrag"

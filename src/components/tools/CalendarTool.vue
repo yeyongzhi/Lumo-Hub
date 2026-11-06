@@ -194,7 +194,7 @@ function today() {
               v-if="cell.holiday"
               :class="
                 cn(
-                  'absolute top-1 right-1 rounded px-0.5 text-[10px]',
+                  'absolute top-1 right-1 rounded px-0.5 text-[0.714rem]',
                   cell.key === selectedKey
                     ? 'bg-primary-foreground/20 text-primary-foreground'
                     : cell.holiday.isWork()

@@ -35,7 +35,7 @@ async function copy() {
         ><Textarea
           id="text-source"
           v-model="input"
-          class="min-h-40 font-mono"
+          class="field-sizing-fixed h-40 resize-none font-mono"
           placeholder="粘贴需要处理的文本…" /></Field
     ></FieldGroup>
     <div class="flex flex-wrap gap-2">
@@ -55,7 +55,7 @@ async function copy() {
           id="text-result"
           :model-value="output"
           readonly
-          class="min-h-40 font-mono" /></Field
+          class="field-sizing-fixed h-40 resize-none font-mono" /></Field
     ></FieldGroup>
     <div class="flex gap-2">
       <Button :disabled="!output" @click="copy">复制结果</Button

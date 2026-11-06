@@ -72,7 +72,7 @@ async function copy(value: string) {
       </div>
       <Button variant="outline" @click="copy(current)">复制</Button>
     </section>
-    <FieldGroup
+    <FieldGroup class="grid grid-cols-2 items-start"
       ><Field
         ><FieldLabel for="timestamp">时间戳 → 日期</FieldLabel
         ><Tabs v-model="unit"

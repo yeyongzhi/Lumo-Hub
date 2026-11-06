@@ -77,24 +77,26 @@ async function copy() {
 }
 </script>
 <template>
-  <div class="flex flex-col gap-6">
-    <FieldGroup
-      ><Field
-        ><FieldLabel for="qr-text">生成二维码</FieldLabel
-        ><Textarea
-          id="qr-text"
-          v-model="text"
-          placeholder="输入链接或文本，实时生成二维码…"
-          class="min-h-28" /></Field
-    ></FieldGroup>
-    <div v-if="image" class="flex flex-col items-center gap-3">
-      <img :src="image" alt="生成的二维码" class="size-64 rounded-xl" /><Button
-        variant="outline"
-        @click="download"
-        >保存 PNG 图片</Button
-      >
+  <div class="grid grid-cols-2 items-start gap-6">
+    <div class="flex min-w-0 flex-col gap-4">
+      <FieldGroup
+        ><Field
+          ><FieldLabel for="qr-text">生成二维码</FieldLabel
+          ><Textarea
+            id="qr-text"
+            v-model="text"
+            placeholder="输入链接或文本，实时生成二维码…"
+            class="field-sizing-fixed h-24 resize-none" /></Field
+      ></FieldGroup>
+      <div v-if="image" class="flex flex-col items-center gap-3">
+        <img :src="image" alt="生成的二维码" class="size-56 rounded-xl" /><Button
+          variant="outline"
+          @click="download"
+          >保存 PNG 图片</Button
+        >
+      </div>
     </div>
-    <section class="flex flex-col gap-3 rounded-xl border p-4">
+    <section class="flex min-w-0 flex-col gap-3 rounded-xl border p-4">
       <h2 class="text-sm font-semibold">从图片识别</h2>
       <p class="text-sm text-muted-foreground">
         选择包含二维码的图片，离线识别，不会自动打开其中的链接。
@@ -107,14 +109,18 @@ async function copy() {
         aria-label="选择二维码图片"
         @change="readFile"
       /><Button variant="outline" class="self-start" @click="file?.click()">选择图片</Button
-      ><Textarea v-if="decoded" :model-value="decoded" readonly aria-label="识别结果" /><Button
+      ><Textarea
         v-if="decoded"
-        variant="outline"
-        class="self-start"
-        @click="copy"
+        :model-value="decoded"
+        readonly
+        aria-label="识别结果"
+        class="field-sizing-fixed h-32 resize-none"
+      /><Button v-if="decoded" variant="outline" class="self-start" @click="copy"
         >复制识别结果</Button
       >
     </section>
-    <p v-if="message" role="status" class="text-sm text-muted-foreground">{{ message }}</p>
+    <p v-if="message" role="status" class="col-span-2 text-sm text-muted-foreground">
+      {{ message }}
+    </p>
   </div>
 </template>

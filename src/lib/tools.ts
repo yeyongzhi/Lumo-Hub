@@ -68,6 +68,34 @@ export const builtinTools = [
     description: '秒 / 毫秒时间戳与日期互转',
     icon: toolIcon('timestamp'),
   },
+  {
+    id: 'json',
+    title: 'JSON 工具',
+    aliases: 'json 格式化 压缩 校验 pretty minify validate',
+    description: '格式化、压缩、校验和定位语法错误',
+    icon: toolIcon('json'),
+  },
+  {
+    id: 'diff',
+    title: '文本对比',
+    aliases: '文本 对比 比较 差异 diff compare text',
+    description: '按行对比原文和修改稿',
+    icon: toolIcon('diff'),
+  },
+  {
+    id: 'timer',
+    title: '番茄钟 / 计时器',
+    aliases: '番茄钟 专注 计时器 倒计时 正计时 秒表 timer stopwatch pomodoro',
+    description: '专注与休息、倒计时、正计时和到时提醒',
+    icon: toolIcon('timer'),
+  },
+  {
+    id: 'units',
+    title: '单位换算',
+    aliases: '单位 换算 转换 长度 重量 温度 文件大小 unit convert',
+    description: '长度、重量、温度和文件大小互转',
+    icon: toolIcon('units'),
+  },
 ] as const;
 export function findTools(query: string) {
   const terms = query.trim().toLowerCase().split(/\s+/);

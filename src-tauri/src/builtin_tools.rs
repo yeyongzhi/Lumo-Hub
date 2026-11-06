@@ -12,15 +12,49 @@ pub struct ClipboardState { entries: Mutex<Vec<Clip>>, paused: AtomicBool, acces
 #[tauri::command]
 // WebView2 creation must run outside the synchronous IPC/main-thread handler on Windows.
 pub async fn open_builtin_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let title = match id.as_str() { "calendar"=>"日历", "color"=>"取色器 + 色板", "clipboard"=>"剪贴板", "qrcode"=>"二维码工具", "text"=>"文本工具箱", "floating"=>"悬浮文本", "timestamp"=>"时间戳工具", _=>return Err("未知工具".into()) };
+    let (title, width, height) = match id.as_str() {
+        "calendar" => ("日历", 1040., 760.),
+        "color" => ("取色器 + 色板", 800., 700.),
+        "clipboard" => ("剪贴板", 720., 560.),
+        "qrcode" => ("二维码工具", 800., 580.),
+        "text" => ("文本工具箱", 800., 620.),
+        "floating" => ("悬浮文本", 420., 360.),
+        "timestamp" => ("时间戳工具", 800., 560.),
+        "json" => ("JSON 工具", 800., 540.),
+        "diff" => ("文本对比", 820., 620.),
+        "timer" => ("番茄钟 / 计时器", 480., 430.),
+        "units" => ("单位换算", 560., 400.),
+        _ => return Err("未知工具".into()),
+    };
     let label = format!("tool-{id}");
     if let Some(w) = app.get_webview_window(&label) { w.unminimize().map_err(|e|e.to_string())?; w.show().map_err(|e|e.to_string())?; return w.set_focus().map_err(|e|e.to_string()); }
     let floating = id == "floating";
     tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(format!("index.html?tool={id}").into()))
-        .title(title).inner_size(if floating {420.} else if id == "calendar" {1040.} else {800.}, if floating {360.} else if id == "calendar" {760.} else {650.})
-        .min_inner_size(360., 300.).decorations(false).always_on_top(floating).build().map_err(|e|e.to_string())?;
+        .title(title)
+        .inner_size(width, height)
+        .min_inner_size(width, height)
+        .decorations(false)
+        .shadow(!floating)
+        .always_on_top(floating)
+        .build()
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn notify_timer_finished(window: tauri::WebviewWindow, title: String) -> Result<(), String> {
+    if window.label() != "tool-timer" {
+        return Err("该命令仅供计时器窗口使用".into());
+    }
+    let title = match title.as_str() {
+        "focus" => "专注时间结束",
+        "break" => "休息时间结束",
+        "countdown" => "倒计时结束",
+        _ => return Err("未知计时模式".into()),
+    };
+    crate::notifications::send(window.app_handle(), "Lumo · 计时提醒", title)
+}
+
 #[tauri::command]
 pub fn save_tool_png(path: String, data: String) -> Result<(), String> {
     let encoded = data.strip_prefix("data:image/png;base64,").ok_or("无效 PNG 图片")?;

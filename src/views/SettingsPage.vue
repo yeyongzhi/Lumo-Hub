@@ -222,7 +222,7 @@ async function restoreBackup() {
     <Card class="min-h-0 min-w-0 flex-1 gap-0 overflow-hidden py-0" data-settings-panel>
       <CardContent
         v-if="section === 'trash'"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto py-6"
+        class="flex min-h-0 flex-1 flex-col overflow-hidden py-6"
         ><EnhancementSettings section="trash" @restore-backup="restoreBackup"
       /></CardContent>
       <ScrollArea v-else :key="section" class="min-h-0 flex-1" data-settings-scroll>

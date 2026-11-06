@@ -96,30 +96,30 @@ defineExpose({ checkUpdate });
   <div class="relative flex flex-col items-start gap-5 text-left">
     <img src="/brand/lumohub.png" alt="LumoHub" class="size-20 shrink-0 object-contain" />
     <div>
-      <h2 class="text-2xl font-semibold">Lumo-Hub</h2>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 class="text-2xl font-semibold">Lumo-Hub</h2>
+        <Badge class="px-3 py-1 text-sm">版本 {{ version }}</Badge>
+      </div>
       <p class="mt-1 text-sm text-muted-foreground">本地优先的个人桌面效率工作台</p>
     </div>
-    <div class="flex w-full flex-wrap items-center justify-between gap-5">
-      <Badge>版本 {{ version }}</Badge>
-      <div class="ml-auto flex flex-wrap items-center justify-end gap-3">
-        <Button :disabled="checking || installing" @click="checkUpdate"
-          ><RefreshCw data-icon="inline-start" :class="checking ? 'animate-spin' : ''" />{{
-            checking ? '正在检查…' : '检查更新'
-          }}</Button
-        ><Button
-          v-if="updateAvailable"
-          variant="outline"
-          :disabled="installing"
-          @click="installUpdate"
-          ><Download data-icon="inline-start" />{{
-            installing ? `正在下载 ${progress}%` : '下载并安装'
-          }}</Button
-        ><Button variant="outline" @click="openChangelog"
-          ><ScrollText data-icon="inline-start" />查看更新日志</Button
-        ><Button variant="outline" @click="openProject"
-          ><ExternalLink data-icon="inline-start" />项目主页</Button
-        >
-      </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <Button :disabled="checking || installing" @click="checkUpdate"
+        ><RefreshCw data-icon="inline-start" :class="checking ? 'animate-spin' : ''" />{{
+          checking ? '正在检查…' : '检查更新'
+        }}</Button
+      ><Button
+        v-if="updateAvailable"
+        variant="outline"
+        :disabled="installing"
+        @click="installUpdate"
+        ><Download data-icon="inline-start" />{{
+          installing ? `正在下载 ${progress}%` : '下载并安装'
+        }}</Button
+      ><Button variant="outline" @click="openChangelog"
+        ><ScrollText data-icon="inline-start" />查看更新日志</Button
+      ><Button variant="outline" @click="openProject"
+        ><ExternalLink data-icon="inline-start" />项目主页</Button
+      >
     </div>
     <p v-if="status" class="max-w-xl text-sm text-muted-foreground">{{ status }}</p>
     <div

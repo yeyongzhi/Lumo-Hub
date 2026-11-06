@@ -120,7 +120,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            builtin_tools::save_tool_png, builtin_tools::open_builtin_tool, builtin_tools::clipboard_history, builtin_tools::clipboard_pause, builtin_tools::clipboard_delete, builtin_tools::clipboard_copy,
+            builtin_tools::save_tool_png, builtin_tools::open_builtin_tool, builtin_tools::notify_timer_finished, builtin_tools::clipboard_history, builtin_tools::clipboard_pause, builtin_tools::clipboard_delete, builtin_tools::clipboard_copy,
             local_files::read_local,local_files::write_local,desktop::close_main, desktop::export_markdown,
             search::search_resources, updates::check_app_update,
             recycle::list_trash, recycle::restore_trash, recycle::purge_trash,

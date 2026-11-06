@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select';
 
 import { onMounted, onUnmounted, ref, watch, computed } from 'vue';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, RotateCcw, GripVertical, Search, ChevronLeft, ChevronRight } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -716,14 +717,14 @@ function date(value: string | null) {
     class="flex min-h-0 flex-1 flex-col gap-4"
   >
     <form
-      class="flex flex-wrap items-end gap-3"
+      class="flex shrink-0 flex-wrap items-end gap-3"
       role="search"
       aria-label="搜索回收站"
       @submit.prevent="searchTrash"
     >
       <FieldGroup class="flex w-full flex-row flex-wrap items-end gap-3 sm:w-auto sm:flex-1">
         <Field class="w-full sm:w-36"
-          ><FieldLabel for="trash-kind">类型</FieldLabel
+          ><FieldLabel for="trash-kind" class="sr-only">类型</FieldLabel
           ><Select v-model="trashKind"
             ><SelectTrigger id="trash-kind" class="w-full"><SelectValue /></SelectTrigger
             ><SelectContent
@@ -737,7 +738,7 @@ function date(value: string | null) {
           ></Field
         >
         <Field class="w-full sm:w-auto sm:min-w-48 sm:flex-1 sm:max-w-sm"
-          ><FieldLabel for="trash-query">关键词</FieldLabel
+          ><FieldLabel for="trash-query" class="sr-only">关键词</FieldLabel
           ><Input id="trash-query" v-model="trashQuery" placeholder="搜索内容标题"
         /></Field>
       </FieldGroup>
@@ -758,72 +759,68 @@ function date(value: string | null) {
       {{ error || '正在读取…' }}
     </p>
     <template v-else>
-      <Empty v-if="!filteredTrash.length" class="min-h-48" role="status"
-        ><EmptyHeader
-          ><EmptyMedia variant="icon"><Trash2 /></EmptyMedia
-          ><EmptyTitle>{{ trash.length ? '没有匹配的内容' : '回收站空空如也' }}</EmptyTitle
-          ><EmptyDescription>{{
-            trash.length
-              ? '试试其他类型或关键词，或重置筛选条件。'
-              : '删除的笔记、便签和倒数日会显示在这里。'
-          }}</EmptyDescription></EmptyHeader
-        ><Button v-if="trash.length" variant="outline" @click="resetTrash">重置筛选</Button></Empty
+      <ScrollArea
+        :key="JSON.stringify([trashPage, trashPageSize, appliedKind, appliedQuery])"
+        class="min-h-0 flex-1"
       >
-      <ul
-        v-else
-        class="flex min-h-0 flex-1 flex-col gap-2"
-        :aria-busy="trashBusy"
-        aria-label="回收站内容"
-      >
-        <li
-          v-for="item in pagedTrash"
-          :key="item.id"
-          class="flex items-center gap-3 rounded-xl bg-muted/50 px-4 py-3"
+        <Empty v-if="!filteredTrash.length" class="min-h-48" role="status"
+          ><EmptyHeader
+            ><EmptyMedia variant="icon"><Trash2 /></EmptyMedia
+            ><EmptyTitle>{{ trash.length ? '没有匹配的内容' : '回收站空空如也' }}</EmptyTitle
+            ><EmptyDescription>{{
+              trash.length
+                ? '试试其他类型或关键词，或重置筛选条件。'
+                : '删除的笔记、便签和倒数日会显示在这里。'
+            }}</EmptyDescription></EmptyHeader
+          ><Button v-if="trash.length" variant="outline" @click="resetTrash"
+            >重置筛选</Button
+          ></Empty
         >
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium" :title="item.title || '无标题'">
-              {{ item.title || '无标题' }}
-            </p>
-            <p class="mt-1 text-xs text-muted-foreground">
-              {{ kindNames[item.kind] }} · 删除于 {{ date(item.deleted_at) }}
-            </p>
-          </div>
-          <div class="flex shrink-0 items-center gap-1">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              :disabled="trashBusy"
-              aria-label="恢复"
-              @click="restore(item)"
-              ><RotateCcw /></Button
-            ><Button
-              variant="danger"
-              size="icon-sm"
-              :disabled="trashBusy"
-              aria-label="永久删除"
-              @click="askPurge(item.id)"
-              ><Trash2
-            /></Button>
-          </div>
-        </li>
-      </ul>
+        <ul v-else class="flex flex-col gap-2 pr-3" :aria-busy="trashBusy" aria-label="回收站内容">
+          <li
+            v-for="item in pagedTrash"
+            :key="item.id"
+            class="flex items-center gap-3 rounded-xl bg-muted/50 px-4 py-3"
+          >
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium" :title="item.title || '无标题'">
+                {{ item.title || '无标题' }}
+              </p>
+              <p class="mt-1 text-xs text-muted-foreground">
+                {{ kindNames[item.kind] }} · 删除于 {{ date(item.deleted_at) }}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center gap-1">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                :disabled="trashBusy"
+                aria-label="恢复"
+                @click="restore(item)"
+                ><RotateCcw /></Button
+              ><Button
+                variant="danger"
+                size="icon-sm"
+                :disabled="trashBusy"
+                aria-label="永久删除"
+                @click="askPurge(item.id)"
+                ><Trash2
+              /></Button>
+            </div>
+          </li>
+        </ul>
+      </ScrollArea>
       <div
         v-if="trash.length"
-        class="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2"
+        class="flex shrink-0 flex-wrap items-center justify-between gap-3 pt-2"
       >
-        <p class="text-xs text-muted-foreground" role="status">
-          共 {{ filteredTrash.length }} 条<span v-if="filteredTrash.length">
-            · 第 {{ (trashPage - 1) * trashPageSize + 1 }}–{{
-              Math.min(trashPage * trashPageSize, filteredTrash.length)
-            }}
-            条</span
-          >
-        </p>
+        <p class="text-sm text-muted-foreground" role="status">共 {{ filteredTrash.length }} 条</p>
         <div class="flex flex-wrap items-center gap-3">
           <Select
             :model-value="String(trashPageSize)"
             @update:model-value="(value) => (trashPageSize = Number(value))"
-            ><SelectTrigger class="w-28" aria-label="每页条数"><SelectValue /></SelectTrigger
+            ><SelectTrigger class="w-32 shrink-0" aria-label="每页条数"
+              ><SelectValue /></SelectTrigger
             ><SelectContent
               ><SelectGroup
                 ><SelectItem v-for="size in [10, 20, 50]" :key="size" :value="String(size)"
