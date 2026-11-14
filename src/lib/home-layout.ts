@@ -23,12 +23,62 @@ export const normalizeHomeWidget = (widget: HomeWidget): HomeWidget => ({
   selected_ids: [...(widget.selected_ids ?? [])],
 });
 export const widgetSizes: HomeWidgetSize[] = ['1x1', '2x1', '1x2', '2x2', '4x1'];
+// Each profile defines a square cell and the gap between cells in logical pixels.
+export const homeGridProfiles = [
+  { minWindowWidth: 0, cell: 100, gap: 8 },
+  { minWindowWidth: 960, cell: 140, gap: 10 },
+  { minWindowWidth: 1080, cell: 170, gap: 12 },
+  { minWindowWidth: 1200, cell: 200, gap: 16 },
+] as const;
+export type HomeGridProfile = (typeof homeGridProfiles)[number];
+export const homeGridTracksPerCell = 6;
+export function homeGridProfileForWidth(width: number): HomeGridProfile {
+  return (
+    [...homeGridProfiles].reverse().find((profile) => width >= profile.minWindowWidth) ??
+    homeGridProfiles[0]
+  );
+}
+export function homeGridCellCount(width: number, profile: HomeGridProfile, minCells = 1) {
+  return Math.max(
+    minCells,
+    Math.min(4, Math.floor((width + profile.gap) / (profile.cell + profile.gap))),
+  );
+}
+export function homeGridTrack(profile: HomeGridProfile) {
+  return (profile.cell - profile.gap * (homeGridTracksPerCell - 1)) / homeGridTracksPerCell;
+}
+export function homeWidgetDimensions(
+  size: HomeWidgetSize,
+  profile: HomeGridProfile = homeGridProfiles[3],
+) {
+  const [columns, rows] = size.split('x').map(Number) as [number, number];
+  return {
+    width: columns * profile.cell + (columns - 1) * profile.gap,
+    height: rows * profile.cell + (rows - 1) * profile.gap,
+  };
+}
+export function homeWidgetSizeLabel(
+  size: HomeWidgetSize,
+  profile: HomeGridProfile = homeGridProfiles[3],
+) {
+  const { width, height } = homeWidgetDimensions(size, profile);
+  return `${size.replace('x', ' × ')} · ${width} × ${height} px`;
+}
+
+// Each standard cell occupies six of the 24 columns at every window width.
 export const widgetClasses: Record<HomeWidgetSize, string> = {
-  '1x1': 'col-span-1 row-span-1',
-  '2x1': 'col-span-2 row-span-1',
-  '1x2': 'col-span-1 row-span-2',
-  '2x2': 'col-span-2 row-span-2',
-  '4x1': 'col-span-2 row-span-1 @min-[64rem]:col-span-4',
+  '1x1': 'col-span-6 row-span-1',
+  '2x1': 'col-span-12 row-span-1',
+  '1x2': 'col-span-6 row-span-2',
+  '2x2': 'col-span-12 row-span-2',
+  '4x1': 'col-span-full row-span-1',
+};
+export const previewWidgetClasses: Record<HomeWidgetSize, string> = {
+  '1x1': 'col-span-6 row-span-1',
+  '2x1': 'col-span-12 row-span-1',
+  '1x2': 'col-span-6 row-span-2',
+  '2x2': 'col-span-12 row-span-2',
+  '4x1': 'col-span-full row-span-1',
 };
 export function defaultHomeLayout(): HomeWidget[] {
   return [

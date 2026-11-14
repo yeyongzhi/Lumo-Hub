@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { askConfirmation } from '@/lib/confirm';
 import AboutPage from '@/views/AboutPage.vue';
+import HomePage from '@/views/HomePage.vue';
 import EnhancementSettings from '@/components/EnhancementSettings.vue';
 import {
   Select,
@@ -14,7 +15,6 @@ import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui
 import { computed, nextTick, ref, watch } from 'vue';
 import {
   CircleHelp,
-  Check,
   Database,
   Download,
   FolderCog,
@@ -28,6 +28,7 @@ import {
   Trash2,
   AppWindow,
   LayoutGrid,
+  LayoutDashboard,
   List,
 } from '@lucide/vue';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -38,24 +39,54 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import type { AppSettings } from '@/lib/types';
 import { api } from '@/lib/api';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import {
+  libraryColumnOptions,
+  libraryColumns,
+  libraryDefaultFilter,
+  libraryIconSize,
+} from '@/lib/library-preferences';
 
 const store = useWorkspaceStore();
+const libraryColumnDraft = ref(libraryColumns(store.settings.client));
+let pendingLibraryColumnWrites = 0;
+watch(
+  () => store.settings.client?.['lumo-library-columns'],
+  () => {
+    if (!pendingLibraryColumnWrites)
+      libraryColumnDraft.value = libraryColumns(store.settings.client);
+  },
+  { deep: true },
+);
 const busy = ref(false);
 const section = ref('appearance');
-const props = defineProps<{ request?: { checkUpdate: boolean; id: number } | null }>();
+async function selectSection(id: string) {
+  if (id === section.value) return;
+  try {
+    await store.flushPendingSaves();
+    section.value = id;
+  } catch (error) {
+    store.notify(`保存设置失败：${String(error)}`);
+  }
+}
+const props = defineProps<{
+  request?: { section: 'about' | 'home'; checkUpdate: boolean; id: number } | null;
+}>();
 const aboutPage = ref<InstanceType<typeof AboutPage> | null>(null);
 watch(
   () => props.request,
   async (request) => {
     if (!request) return;
-    section.value = 'about';
+    section.value = request.section;
     await nextTick();
-    if (request.checkUpdate) void aboutPage.value?.checkUpdate();
+    if (request.section === 'about' && request.checkUpdate) void aboutPage.value?.checkUpdate();
   },
   { immediate: true },
 );
 const settingsMenu = [
   { id: 'appearance', label: '外观', icon: Settings },
+  { id: 'home', label: '首页设置', icon: LayoutDashboard },
   { id: 'library', label: '应用库', icon: AppWindow },
   { id: 'data', label: '数据与备份', icon: Database },
   { id: 'launcher', label: '快捷启动', icon: Keyboard },
@@ -79,6 +110,10 @@ const modes = [
   { id: 'dark', label: '深色', icon: Moon },
   { id: 'system', label: '跟随系统', icon: Monitor },
 ] as const;
+const appearanceModes = [
+  { id: 'solid', label: '纯色背景' },
+  { id: 'glass', label: '毛玻璃' },
+] as const;
 const accents = [
   { id: 'red', label: '红', className: 'bg-red-500' },
   { id: 'orange', label: '橙', className: 'bg-orange-500' },
@@ -93,6 +128,14 @@ async function setMode(mode: AppSettings['theme_mode']) {
     await store.setSetting('theme_mode', mode);
   } catch {
     /* Best-effort platform operation; no state change on failure. */
+  }
+}
+function updateThemeMode(value: string | number) {
+  if (value === 'light' || value === 'dark' || value === 'system') void setMode(value);
+}
+function updateAppearanceMode(value: string | number) {
+  if (value === 'solid' || value === 'glass') {
+    void store.setSetting('appearance_mode', value).catch(() => {});
   }
 }
 async function setAccent(accent: AppSettings['accent']) {
@@ -130,6 +173,52 @@ async function setLibraryDensity(value: unknown) {
     await store.saveClient('lumo-library-density', value);
   } catch (e) {
     store.notify(`保存应用库设置失败：${String(e)}`);
+  }
+}
+async function setLibraryDefaultFilter(value: unknown) {
+  if (
+    typeof value !== 'string' ||
+    libraryDefaultFilter(
+      { ...store.settings.client, 'lumo-library-default-filter': value },
+      store.groups,
+    ) !== value
+  )
+    return;
+  try {
+    await store.saveClient('lumo-library-default-filter', value);
+  } catch (error) {
+    store.notify(`保存应用库设置失败：${String(error)}`);
+  }
+}
+async function setLibraryIconSize(value: unknown) {
+  if (value !== 'small' && value !== 'standard' && value !== 'large') return;
+  try {
+    await store.saveClient('lumo-library-icon-size', value);
+  } catch (error) {
+    store.notify(`保存应用库设置失败：${String(error)}`);
+  }
+}
+async function setLibraryGridNames(value: boolean) {
+  try {
+    await store.saveClient('lumo-library-grid-show-names', value);
+  } catch (error) {
+    store.notify(`保存应用库设置失败：${String(error)}`);
+  }
+}
+async function setLibraryColumn(id: string, enabled: boolean) {
+  const next = enabled
+    ? [...new Set([...libraryColumnDraft.value, id])]
+    : libraryColumnDraft.value.filter((column) => column !== id);
+  libraryColumnDraft.value = next;
+  pendingLibraryColumnWrites++;
+  try {
+    await store.saveClient('lumo-library-columns', next);
+  } catch (error) {
+    store.notify(`保存应用库设置失败：${String(error)}`);
+  } finally {
+    pendingLibraryColumnWrites--;
+    if (!pendingLibraryColumnWrites)
+      libraryColumnDraft.value = libraryColumns(store.settings.client);
   }
 }
 async function chooseDataPath() {
@@ -215,13 +304,19 @@ async function restoreBackup() {
           section === item.id ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground'
         "
         :aria-current="section === item.id ? 'page' : undefined"
-        @click="section = item.id"
+        @click="selectSection(item.id)"
         ><component :is="item.icon" />{{ item.label }}</Button
       >
     </nav>
     <Card class="min-h-0 min-w-0 flex-1 gap-0 overflow-hidden py-0" data-settings-panel>
       <CardContent
-        v-if="section === 'trash'"
+        v-if="section === 'home'"
+        class="flex min-h-0 flex-1 flex-col overflow-hidden py-6"
+      >
+        <HomePage settings-mode />
+      </CardContent>
+      <CardContent
+        v-else-if="section === 'trash'"
         class="flex min-h-0 flex-1 flex-col overflow-hidden py-6"
         ><EnhancementSettings section="trash" @restore-backup="restoreBackup"
       /></CardContent>
@@ -230,23 +325,30 @@ async function restoreBackup() {
           <div v-if="section === 'appearance'" class="flex min-w-0 flex-col gap-6">
             <div class="flex flex-col gap-7">
               <section>
+                <h3 class="mb-3 text-base font-semibold">界面背景</h3>
+                <Tabs
+                  :model-value="store.settings.appearance_mode"
+                  @update:model-value="updateAppearanceMode"
+                >
+                  <TabsList aria-label="界面背景">
+                    <TabsTrigger v-for="mode in appearanceModes" :key="mode.id" :value="mode.id">
+                      {{ mode.label }}
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </section>
+              <section>
                 <h3 class="mb-3 text-base font-semibold">外观模式</h3>
-                <div class="grid max-w-2xl grid-cols-3 gap-3">
-                  <Button
-                    v-for="mode in modes"
-                    :key="mode.id"
-                    variant="outline"
-                    class="h-auto justify-start rounded-xl py-3"
-                    :class="
-                      store.settings.theme_mode === mode.id
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : ''
-                    "
-                    @click="setMode(mode.id)"
-                    ><component :is="mode.icon" />{{ mode.label
-                    }}<Check v-if="store.settings.theme_mode === mode.id" class="ml-auto"
-                  /></Button>
-                </div>
+                <Tabs
+                  class="max-w-full"
+                  :model-value="store.settings.theme_mode"
+                  @update:model-value="updateThemeMode"
+                  ><TabsList
+                    ><TabsTrigger v-for="mode in modes" :key="mode.id" :value="mode.id"
+                      ><component :is="mode.icon" />{{ mode.label }}</TabsTrigger
+                    ></TabsList
+                  ></Tabs
+                >
               </section>
               <section>
                 <h3 class="mb-3 text-base font-semibold">强调色</h3>
@@ -316,6 +418,39 @@ async function restoreBackup() {
           </div>
           <div v-else-if="section === 'library'" class="flex min-w-0 flex-col gap-6">
             <FieldGroup>
+              <Field>
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold" for="library-default-filter"
+                    >默认打开范围</FieldLabel
+                  >
+                  <FieldDescription
+                    >进入应用库时显示指定分类或分组，也可以记住上次选择。</FieldDescription
+                  >
+                </div>
+                <Select
+                  :model-value="libraryDefaultFilter(store.settings.client, store.groups)"
+                  @update:model-value="setLibraryDefaultFilter"
+                >
+                  <SelectTrigger id="library-default-filter" class="w-full max-w-xs"
+                    ><SelectValue
+                  /></SelectTrigger>
+                  <SelectContent
+                    ><SelectGroup>
+                      <SelectItem value="all">全部</SelectItem>
+                      <SelectItem value="favorites">收藏</SelectItem>
+                      <SelectItem value="pinned">固定项</SelectItem>
+                      <SelectItem value="common">系统启动项</SelectItem>
+                      <SelectItem value="remember">记住上次选择</SelectItem>
+                      <SelectItem
+                        v-for="group in store.groups"
+                        :key="group.id"
+                        :value="`group:${group.id}`"
+                        >分组 · {{ group.name }}</SelectItem
+                      >
+                    </SelectGroup></SelectContent
+                  >
+                </Select>
+              </Field>
               <Field
                 ><div class="min-w-0 flex-1">
                   <FieldLabel class="text-base font-semibold">显示方式</FieldLabel
@@ -331,6 +466,66 @@ async function restoreBackup() {
                   ></Tabs
                 ></Field
               >
+              <Field>
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold" for="library-icon-size"
+                    >图标大小</FieldLabel
+                  >
+                  <FieldDescription>调整应用库网格和列表中的启动项图标。</FieldDescription>
+                </div>
+                <Select
+                  :model-value="libraryIconSize(store.settings.client)"
+                  @update:model-value="setLibraryIconSize"
+                >
+                  <SelectTrigger id="library-icon-size" class="w-full max-w-xs"
+                    ><SelectValue
+                  /></SelectTrigger>
+                  <SelectContent
+                    ><SelectGroup>
+                      <SelectItem value="small">小</SelectItem>
+                      <SelectItem value="standard">中（默认）</SelectItem>
+                      <SelectItem value="large">大</SelectItem>
+                    </SelectGroup></SelectContent
+                  >
+                </Select>
+              </Field>
+              <Field>
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold" for="library-grid-names"
+                    >网格显示应用名称</FieldLabel
+                  >
+                  <FieldDescription>关闭后网格仅显示图标；列表仍显示名称。</FieldDescription>
+                </div>
+                <div class="flex items-center">
+                  <Switch
+                    id="library-grid-names"
+                    :model-value="store.settings.client?.['lumo-library-grid-show-names'] !== false"
+                    @update:model-value="setLibraryGridNames"
+                  />
+                </div>
+              </Field>
+              <Field>
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold">列表附加信息</FieldLabel>
+                  <FieldDescription
+                    >选择列表中显示的信息，与应用库的“显示信息”菜单同步。</FieldDescription
+                  >
+                </div>
+                <div class="flex flex-wrap gap-x-6 gap-y-3">
+                  <div
+                    v-for="column in libraryColumnOptions"
+                    :key="column.id"
+                    class="flex items-center gap-2"
+                  >
+                    <Checkbox
+                      :id="`library-column-${column.id}`"
+                      :model-value="libraryColumnDraft.includes(column.id)"
+                      @update:model-value="(value) => setLibraryColumn(column.id, value === true)"
+                    />
+                    <FieldLabel :for="`library-column-${column.id}`">{{ column.name }}</FieldLabel>
+                  </div>
+                </div>
+              </Field>
               <Field
                 ><div class="min-w-0 flex-1">
                   <FieldLabel class="text-base font-semibold" for="library-density"

@@ -61,6 +61,14 @@ const stale = computed(
           ? 6 * 60 * 60_000
           : 60 * 60_000),
 );
+const feedStatus = computed(() => {
+  if (loading.value) return data.value ? '正在更新' : '正在加载';
+  if (offline.value) return data.value ? '离线 · 显示缓存' : '当前离线，暂无缓存';
+  if (error.value) return data.value ? '更新失败 · 显示缓存' : '加载失败';
+  if (stale.value && data.value) return '缓存可能已过期';
+  if (!data.value) return '暂无内容';
+  return '';
+});
 const cacheKey = () => `lumo-feed-${props.kind}-${props.kind === 'weather' ? city.value : ''}`;
 async function readCache() {
   data.value = null;
@@ -164,7 +172,22 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div class="flex flex-1 flex-col gap-2">
+  <div class="flex min-h-full flex-1 flex-col gap-2">
+    <div
+      v-if="feedStatus"
+      role="status"
+      class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+    >
+      <span>{{ feedStatus }}</span>
+      <Button
+        v-if="!loading && (error || offline)"
+        variant="outline"
+        size="sm"
+        class="h-6 px-2 text-xs"
+        @click="load(true)"
+        >重试</Button
+      >
+    </div>
     <template v-if="kind === 'weather'">
       <div
         class="flex flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-2"
@@ -193,7 +216,10 @@ onBeforeUnmount(() => {
               city || data?.location || '按网络位置定位'
             }}</span></Button
           >
-          <p v-if="data" class="text-2xl font-semibold tabular-nums @min-[20rem]:text-4xl">
+          <p
+            v-if="data"
+            class="text-xl font-semibold tracking-tight tabular-nums @min-[11rem]:text-3xl @min-[20rem]:text-4xl"
+          >
             {{ data.temperature }}<span class="text-xl">°C</span>
           </p>
           <p v-if="data" class="text-sm leading-5">
@@ -203,7 +229,7 @@ onBeforeUnmount(() => {
         </div>
         <div
           v-if="data"
-          class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground @min-[24rem]:flex-col @min-[24rem]:text-right @min-[24rem]:text-sm"
+          class="flex flex-wrap gap-x-3 gap-y-1 rounded-xl bg-muted/40 px-3 py-2 text-xs text-muted-foreground @min-[24rem]:flex-col @min-[24rem]:text-right"
         >
           <p>湿度 {{ data.humidity }}%</p>
           <p>风速 {{ data.wind }} km/h</p>
@@ -211,11 +237,11 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <template v-else-if="data && kind === 'news'">
-      <ol class="flex flex-col gap-2">
+      <ol class="flex flex-col gap-1">
         <li
           v-for="(line, index) in data.news"
           :key="index"
-          class="flex items-start gap-3 text-sm leading-6"
+          class="flex items-start gap-3 rounded-lg px-1 py-1 text-sm leading-6"
         >
           <span class="shrink-0 text-xs font-semibold leading-6 tabular-nums text-primary">{{
             String(index + 1).padStart(2, '0')
@@ -226,23 +252,18 @@ onBeforeUnmount(() => {
     </template>
     <template v-else-if="data">
       <p
-        class="whitespace-pre-wrap break-words text-sm leading-7"
+        class="whitespace-pre-wrap break-words text-sm leading-7 text-foreground/90 @min-[24rem]:text-base"
         :class="size.endsWith('x2') ? 'my-auto' : ''"
       >
         {{ data.content }}
       </p>
     </template>
-    <p v-if="stale && data" class="text-xs text-muted-foreground">
-      上次更新：{{ new Date(loadedAt).toLocaleString('zh-CN') }} · 内容可能已过期
+    <p v-if="data && (stale || offline || error) && loadedAt" class="text-xs text-muted-foreground">
+      上次更新：{{ new Date(loadedAt).toLocaleString('zh-CN') }}
     </p>
-    <p v-if="loading" role="status" class="text-xs text-muted-foreground">
-      {{ data ? '正在刷新…' : '正在获取内容…' }}
-    </p>
-    <details v-if="error" class="shrink-0 text-sm leading-6 text-muted-foreground">
-      <summary class="cursor-pointer">
-        {{ data ? '暂时无法更新，已保留上次内容' : '暂时无法获取内容' }} · 点击右上角重试
-      </summary>
-      <p class="mt-1 break-words text-xs">{{ error }}</p>
+    <details v-if="error" class="shrink-0 text-xs text-muted-foreground">
+      <summary class="cursor-pointer">查看原因</summary>
+      <p class="mt-1 break-words">{{ error }}</p>
     </details>
     <div
       v-if="data && (kind !== 'weather' || offline || error)"
@@ -251,10 +272,7 @@ onBeforeUnmount(() => {
         kind === 'news' ? 'border-t border-border pt-3' : kind === 'weather' ? 'pt-1' : 'pt-3'
       "
     >
-      <span v-if="newsAge || offline || error" class="text-sm"
-        >{{ newsAge }}{{ newsAge && (offline || error) ? ' · ' : ''
-        }}{{ offline ? '离线内容' : error ? '缓存内容' : '' }}</span
-      >
+      <span v-if="newsAge" class="text-xs">{{ newsAge }}</span>
       <p v-if="kind === 'news' && data.content" class="min-w-0 flex-1">{{ data.content }}</p>
       <p
         v-if="['hitokoto', 'poetry'].includes(kind) && (data.author || data.source)"

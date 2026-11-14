@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { textOperations, transformText } from '@/lib/text-tools';
+import { useToastMessage } from '@/lib/toast-message';
 const input = ref(''),
   output = ref(''),
-  message = ref('');
+  message = useToastMessage();
 const count = computed(() => Array.from(input.value).length);
 function run(id: string) {
   try {
@@ -70,6 +71,5 @@ async function copy() {
         >清空</Button
       >
     </div>
-    <p v-if="message" role="status" class="text-sm text-muted-foreground">{{ message }}</p>
   </div>
 </template>

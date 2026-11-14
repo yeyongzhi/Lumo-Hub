@@ -9,12 +9,13 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import { useToastMessage } from '@/lib/toast-message';
 type Clip = { id: string; kind: string; content: string; created: string };
 const entries = ref<Clip[]>([]),
   paused = ref(false),
   query = ref(''),
   filter = ref('all'),
-  message = ref('');
+  message = useToastMessage();
 const visible = computed(() =>
   entries.value.filter(
     (e) =>
@@ -95,9 +96,7 @@ onUnmounted(() => unlisten?.());
           ><TabsTrigger value="image">图片</TabsTrigger></TabsList
         ></Tabs
       >
-      <p role="status" class="text-sm text-muted-foreground">
-        {{ message || `共 ${visible.length} 条记录` }}
-      </p>
+      <p role="status" class="text-sm text-muted-foreground">共 {{ visible.length }} 条记录</p>
     </div>
     <ScrollArea class="min-h-0 flex-1">
       <div class="flex flex-col gap-4 p-5">

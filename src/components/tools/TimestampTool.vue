@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToastMessage } from '@/lib/toast-message';
 const now = ref(Date.now()),
   stamp = ref(''),
   unit = ref('seconds'),
   time = ref('00:00:00'),
-  message = ref(''),
+  message = useToastMessage(),
   result = ref(''),
   dateResult = ref('');
 const date = shallowRef<DateValue>(),
@@ -129,6 +130,5 @@ async function copy(value: string) {
         ></Field
       ></FieldGroup
     >
-    <p v-if="message" role="status" class="text-sm text-muted-foreground">{{ message }}</p>
   </div>
 </template>

@@ -34,6 +34,7 @@ pub async fn open_builtin_tool(app: tauri::AppHandle, id: String) -> Result<(), 
         .inner_size(width, height)
         .min_inner_size(width, height)
         .decorations(false)
+        .transparent(true)
         .shadow(!floating)
         .always_on_top(floating)
         .build()

@@ -36,6 +36,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { applySettings, watchSystemTheme } from '@/lib/theme';
+import { useToastMessage } from '@/lib/toast-message';
 import { useWorkspaceStore } from '@/stores/workspace';
 import type { SearchResult } from '@/lib/types';
 
@@ -172,7 +173,7 @@ const store = useWorkspaceStore();
 const query = ref(''),
   results = ref<SearchResult[]>([]),
   selected = ref(0),
-  error = ref(''),
+  error = useToastMessage(),
   busy = ref(false),
   loading = ref(true);
 const clockNow = ref(new Date());
@@ -719,7 +720,6 @@ onUnmounted(() => {
     <div
       class="launch-content flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto overscroll-contain p-5"
     >
-      <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
       <p v-if="loading" class="text-sm text-muted-foreground">正在读取本地内容…</p>
       <template v-for="section in panelOrder" :key="section">
         <section
@@ -1073,12 +1073,20 @@ onUnmounted(() => {
       </div>
     </div>
     <footer
-      class="flex h-11 shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-4"
+      class="flex h-11 shrink-0 items-center justify-between gap-3 border-t border-border px-4"
       aria-label="快捷启动窗口操作"
     >
-      <time class="truncate text-sm text-muted-foreground" :datetime="clockNow.toISOString()">{{
-        footerTimestamp
-      }}</time>
+      <time
+        class="hidden shrink-0 text-sm text-muted-foreground sm:block"
+        :datetime="clockNow.toISOString()"
+        >{{ footerTimestamp }}</time
+      >
+      <p
+        class="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
+        :title="`${settings.launcher.shortcut} 唤出 · 方向键切换 · Enter 打开 · Esc 关闭`"
+      >
+        {{ settings.launcher.shortcut }} 唤出 · 方向键切换 · Enter 打开 · Esc 关闭
+      </p>
       <div class="flex shrink-0 items-center gap-1">
         <Button
           variant="ghost"

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { formatJson, jsonError } from '@/lib/json-tool';
+import { toast } from 'vue-sonner';
 
 const source = ref('');
 const output = ref('');
@@ -22,7 +23,7 @@ function run(action: 'format' | 'compact' | 'validate') {
   try {
     if (action === 'validate') JSON.parse(source.value);
     else output.value = formatJson(source.value, action === 'compact');
-    message.value = action === 'validate' ? 'JSON 语法正确。' : '转换完成。';
+    toast(action === 'validate' ? 'JSON 语法正确。' : '转换完成。');
   } catch (error) {
     const issue = jsonError(source.value, error);
     invalid.value = true;
@@ -38,9 +39,9 @@ function run(action: 'format' | 'compact' | 'validate') {
 async function copy() {
   try {
     await invoke('clipboard_copy', { text: output.value });
-    message.value = '已复制结果。';
+    toast('已复制结果。');
   } catch (error) {
-    message.value = '复制失败：' + String(error);
+    toast('复制失败：' + String(error));
   }
 }
 </script>

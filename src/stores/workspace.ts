@@ -1,6 +1,7 @@
 import { migrateLegacyStorage, writeLocal } from '@/lib/local-files';
 import { normalizeNoteTags } from '@/lib/note-tags';
 import { defineStore } from 'pinia';
+import { toast } from 'vue-sonner';
 import { ref, watch } from 'vue';
 import { api } from '@/lib/api';
 import { applySettings } from '@/lib/theme';
@@ -26,6 +27,7 @@ const defaults: AppSettings = {
     tag_catalog: [],
   },
   theme_mode: 'system',
+  appearance_mode: 'glass',
   accent: 'blue',
   font_size: 14,
   border_radius: 16,
@@ -72,6 +74,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   watch(
     () => [
       settings.value.theme_mode,
+      settings.value.appearance_mode,
       settings.value.accent,
       settings.value.font_size,
       settings.value.border_radius,
@@ -81,23 +84,32 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   );
 
   let messageTimer: ReturnType<typeof setTimeout> | undefined;
-  function notify(text: string) {
-    undoAction.value = null;
-    message.value = text;
+  let messageVersion = 0;
+  function expireMessage(version: number) {
     if (messageTimer) clearTimeout(messageTimer);
     messageTimer = setTimeout(() => {
+      if (version !== messageVersion) return;
+      messageVersion++;
       message.value = '';
       undoAction.value = null;
     }, 8000);
   }
+  function notify(text: string) {
+    messageVersion++;
+    undoAction.value = null;
+    message.value = text;
+    toast(text, { id: 'lumo-workspace-message', duration: 8000, action: undefined });
+    expireMessage(messageVersion);
+  }
 
   async function notifyDeleted(kind: 'note' | 'sticky' | 'countdown', ids: string[]) {
     notify('内容已移入回收站');
+    const version = messageVersion;
     try {
       const items = (await api.listTrash()).filter(
         (item) => item.kind === kind && ids.includes(item.original_id),
       );
-      if (!items.length) return;
+      if (!items.length || version !== messageVersion) return;
       undoAction.value = async () => {
         if (undoBusy.value) return;
         undoBusy.value = true;
@@ -114,6 +126,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           undoBusy.value = false;
         }
       };
+      toast('内容已移入回收站', {
+        id: 'lumo-workspace-message',
+        duration: 8000,
+        action: { label: '撤销', onClick: () => void undoAction.value?.() },
+      });
+      expireMessage(version);
     } catch {
       /* Deletion succeeded; recovery remains available in the recycle bin. */
     }

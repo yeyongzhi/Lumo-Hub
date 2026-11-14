@@ -6,6 +6,7 @@ import { Pin, Minus, X } from '@lucide/vue';
 import { builtinTools } from '@/lib/tools';
 import { api } from '@/lib/api';
 import { applySettings, watchSystemTheme } from '@/lib/theme';
+import { useToastMessage } from '@/lib/toast-message';
 import type { AppSettings } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -33,7 +34,7 @@ const components = {
   units: defineAsyncComponent(() => import('@/components/tools/UnitsTool.vue')),
 };
 const pinned = ref(id === 'floating'),
-  error = ref('');
+  error = useToastMessage();
 const removers: (() => void)[] = [];
 let settings: AppSettings | undefined;
 let settingsVersion = 0;
@@ -110,7 +111,6 @@ onUnmounted(() => {
         ><X
       /></Button>
     </header>
-    <p v-if="error" role="alert" class="px-5 pt-3 text-sm text-destructive">{{ error }}</p>
     <component
       :is="components[tool.id]"
       v-if="floating || tool.id === 'clipboard' || tool.id === 'diff'"

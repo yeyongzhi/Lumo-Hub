@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useHomeLayoutEditor } from '@/lib/use-home-layout-editor';
 import HomeWidgetFrame from '@/components/HomeWidgetFrame.vue';
-import QuickCapture from '@/components/QuickCapture.vue';
 import { builtinTools, openTool } from '@/lib/tools';
 import { resourceImage } from '@/lib/library-preferences';
 import {
@@ -36,7 +35,6 @@ import {
   Globe,
   GripVertical,
   History,
-  LayoutDashboard,
   ListFilter,
   NotebookPen,
   Plus,
@@ -66,7 +64,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { countdownTarget, countdownStatus, formatLongDate } from '@/lib/dates';
+import { countdownTarget, countdownStatus } from '@/lib/dates';
 import { useWorkspaceStore } from '@/stores/workspace';
 import {
   defaultHomeLayout,
@@ -76,19 +74,35 @@ import {
   normalizeHomeWidget,
   fixedWidgetSize,
   widgetClasses,
+  previewWidgetClasses,
   widgetNames,
   widgetSizes,
+  homeGridProfileForWidth,
+  homeGridCellCount,
+  homeGridTrack,
+  homeGridTracksPerCell,
+  homeWidgetSizeLabel,
 } from '@/lib/home-layout';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import ClockWidget from '@/components/ClockWidget.vue';
 import HomeFeed from '@/components/HomeFeed.vue';
 import type { FeedKind } from '@/lib/home-feeds';
+import type { HomeGridProfile } from '@/lib/home-layout';
 import type { HomeWidget, HomeWidgetKind, HomeWidgetSize, PageId, Resource } from '@/lib/types';
 
-const emit = defineEmits<{ navigate: [page: PageId] }>();
+const props = withDefaults(
+  defineProps<{
+    settingsMode?: boolean;
+    previewWidget?: HomeWidget;
+    previewProfile?: HomeGridProfile;
+  }>(),
+  {
+    settingsMode: false,
+  },
+);
+const emit = defineEmits<{ navigate: [page: PageId]; 'open-home-settings': [] }>();
 const store = useWorkspaceStore();
-const captureOpen = ref(false),
-  moduleSettings = ref<HomeWidget | null>(null),
+const moduleSettings = ref<HomeWidget | null>(null),
   moduleSaving = ref(false);
 const contentAuto = ref(true);
 const countdownCount = ref(String(store.settings.client?.['lumo-home-countdown-count'] ?? 3));
@@ -212,20 +226,57 @@ async function openContent(page: PageId, id?: string) {
 const now = ref(new Date());
 let timer: ReturnType<typeof setInterval>;
 let unregisterSave: (() => void) | undefined;
+const homeScroll = ref<HTMLElement | null>(null);
+const viewportWidth = ref(window.innerWidth);
+const gridProfile = computed(
+  () => props.previewProfile ?? homeGridProfileForWidth(viewportWidth.value),
+);
+function updateViewportWidth() {
+  viewportWidth.value = window.innerWidth;
+}
+watch(gridProfile, () => void nextTick(observeHomeGrid));
+let gridObserver: ResizeObserver | undefined;
+function observeHomeGrid() {
+  gridObserver?.disconnect();
+  const grid = homeScroll.value?.querySelector<HTMLElement>('[data-home-grid]');
+  if (!grid || !grid.classList.contains('grid')) return;
+  const container = homeScroll.value;
+  if (!container) return;
+  gridObserver = new ResizeObserver(() => {
+    const minCells = renderedWidgets.value.reduce(
+      (max, widget) => Math.max(max, widget.size === '4x1' ? 1 : Number(widget.size[0])),
+      1,
+    );
+    const cells = homeGridCellCount(container.clientWidth, gridProfile.value, minCells);
+    grid.style.setProperty('--home-grid-columns', String(cells * homeGridTracksPerCell));
+  });
+  gridObserver.observe(container);
+}
 onMounted(() => {
+  void nextTick(observeHomeGrid);
+  window.addEventListener('resize', updateViewportWidth);
+  if (props.settingsMode) beginEdit();
+  timer = setInterval(() => {
+    now.value = new Date();
+  }, 1000);
+  if (props.previewWidget) return;
   window.addEventListener('pointermove', pointerMove, { passive: false });
   window.addEventListener('pointerup', pointerUp);
   window.addEventListener('pointercancel', cancelDrag);
   window.addEventListener('blur', cancelDrag);
   window.addEventListener('keydown', dragKeydown);
-  timer = setInterval(() => {
-    now.value = new Date();
-  }, 1000);
   unregisterSave = store.registerPendingSave(async () => {
-    if (editing.value) await persistLayout();
+    if (
+      editing.value &&
+      JSON.stringify(widgets.value.map(normalizeHomeWidget)) !==
+        JSON.stringify(store.settings.home_layout.map(normalizeHomeWidget))
+    )
+      await persistLayout();
   });
 });
 onUnmounted(() => {
+  gridObserver?.disconnect();
+  window.removeEventListener('resize', updateViewportWidth);
   stopAutoScroll();
   window.removeEventListener('pointermove', pointerMove);
   window.removeEventListener('pointerup', pointerUp);
@@ -235,7 +286,6 @@ onUnmounted(() => {
   clearInterval(timer);
   unregisterSave?.();
 });
-const longDate = computed(() => formatLongDate(now.value));
 const time = computed(() =>
   now.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
 );
@@ -283,11 +333,6 @@ const upcoming = computed(() => {
     Number(store.settings.client?.['lumo-home-countdown-count'] ?? 3),
   );
 });
-function chosenSticky(widget: HomeWidget) {
-  return widget.selected_ids?.length
-    ? store.stickies.find((item) => item.id === widget.selected_ids![0])
-    : store.stickies[0];
-}
 function visibleStickies(widget: HomeWidget) {
   if (widget.selected_ids?.length)
     return store.stickies.filter((item) => widget.selected_ids!.includes(item.id));
@@ -297,11 +342,6 @@ function visibleNotes(widget: HomeWidget) {
   return widget.selected_ids?.length
     ? store.notes.filter((item) => widget.selected_ids!.includes(item.id))
     : store.notes.slice(0, 2);
-}
-function chosenNote(widget: HomeWidget) {
-  return widget.selected_ids?.length
-    ? store.notes.find((item) => item.id === widget.selected_ids![0])
-    : store.notes[0];
 }
 function chosenCountdowns(widget: HomeWidget) {
   return widget.selected_ids?.length
@@ -383,10 +423,6 @@ function resetLayoutContent(widget: HomeWidget) {
     widget.selected_ids = [];
   }
 }
-const lastSticky = computed(() =>
-  dragWidget.value ? chosenSticky(dragWidget.value) : store.stickies[0],
-);
-const lastNote = computed(() => (dragWidget.value ? chosenNote(dragWidget.value) : store.notes[0]));
 const recentResources = computed(() =>
   store.resources
     .filter((item) => item.last_opened_at)
@@ -423,25 +459,22 @@ async function launchRecent(item: Resource) {
 }
 
 const showModules = ref(false);
-const selectedModules = ref<HomeWidgetKind[]>([]);
+const selectedModule = ref<HomeWidgetKind>('clock');
+const previewSize = ref<HomeWidgetSize>('1x1');
+const previewCard = computed<HomeWidget>(() => ({
+  id: 'preview',
+  kind: selectedModule.value,
+  size: previewSize.value,
+}));
+const renderedWidgets = computed(() =>
+  props.previewWidget ? [props.previewWidget] : widgets.value,
+);
+watch(
+  () => renderedWidgets.value.map((widget) => widget.size).join(','),
+  () => void nextTick(observeHomeGrid),
+);
 const dropTarget = ref('');
 const newsDate = ref('');
-const modulePreviews: Record<HomeWidgetKind, string> = {
-  clock: '14:26:08 · 星期六',
-  countdowns: '纪念日 · 还有 14 天',
-  sticky: '随手记录想法和待办',
-  note: '整理笔记，留住灵感',
-  recent: '最近打开的应用和文件',
-  weather: '22°C · 晴 · 体感 20°C',
-  hitokoto: '一句话，遇见好心情。',
-  news: '01 今日资讯\n02 每天一分钟，了解世界',
-  poetry: '故人具鸡黍，邀我至田家。',
-  library: '应用、网页和文件一览',
-  quick_launch: '收藏的常用启动项',
-  quick_tools: '日历、二维码与文本工具',
-  calendar: '翻阅月历 · 快速回到今天',
-  time: '14:26:08',
-};
 const saving = ref(false);
 const draggedId = ref<string | null>(null);
 const dragPosition = ref({ x: 0, y: 0, offsetX: 0, offsetY: 0, width: 0, height: 0 });
@@ -456,37 +489,6 @@ let pendingDrag: {
 let lastPreviewAt = 0;
 let autoScrollFrame = 0;
 let lastPointerEvent: PointerEvent | null = null;
-const dragWidget = computed(() => widgets.value.find((widget) => widget.id === draggedId.value));
-const ghostStyle = computed(() => ({
-  left: `${dragPosition.value.x - dragPosition.value.offsetX}px`,
-  top: `${dragPosition.value.y - dragPosition.value.offsetY}px`,
-  width: `${dragPosition.value.width}px`,
-  height: `${dragPosition.value.height}px`,
-}));
-const dragPreviewText = computed(() => {
-  switch (dragWidget.value?.kind) {
-    case 'time':
-      return time.value;
-    case 'clock':
-      return `${time.value} · ${longDate.value}`;
-    case 'countdowns':
-      return (
-        (dragWidget.value ? chosenCountdowns(dragWidget.value) : upcoming.value)
-          .map((item) => `${item.title} ${countdownStatus(item, now.value).text}`)
-          .join('\n') || '添加一个重要日期，让期待有个名字。'
-      );
-    case 'sticky':
-      return lastSticky.value?.content || '还没有便签，在这里记录待办或随手想法。';
-    case 'note':
-      return lastNote.value
-        ? `${lastNote.value.title}\n${lastNote.value.content}`
-        : '还没有笔记，开始记录和整理想法。';
-    case 'recent':
-      return recentResources.value.map((item) => item.name).join(' · ') || '还没有打开记录。';
-    default:
-      return dragWidget.value ? modulePreviews[dragWidget.value.kind] : '';
-  }
-});
 const moduleIcons = {
   clock: Clock3,
   countdowns: CalendarDays,
@@ -527,30 +529,29 @@ watch(
 function beginEdit() {
   beginLayoutEdit(store.settings.home_layout);
 }
+function selectModule(kind: HomeWidgetKind) {
+  selectedModule.value = kind;
+  previewSize.value = createModule(kind).size;
+}
 function openModules() {
   if (!editing.value) beginEdit();
-  selectedModules.value = [];
-  showModules.value = true;
-}
-function toggleModule(kind: HomeWidgetKind) {
-  selectedModules.value = selectedModules.value.includes(kind)
-    ? selectedModules.value.filter((item) => item !== kind)
-    : [...selectedModules.value, kind];
-}
-function addSelectedModules() {
-  const kinds = selectedModules.value.filter(
+  const firstAvailable = (Object.keys(widgetNames) as HomeWidgetKind[]).find(
     (kind) => !widgets.value.some((widget) => widget.kind === kind),
   );
-  if (!kinds.length) return;
+  selectModule(firstAvailable ?? 'clock');
+  showModules.value = true;
+}
+function addSelectedModules() {
+  if (widgets.value.some((widget) => widget.kind === selectedModule.value)) return;
   rememberLayout();
-  for (const kind of kinds) widgets.value.push(createModule(kind));
+  widgets.value.push({ ...createModule(selectedModule.value), size: previewSize.value });
   showModules.value = false;
-  selectedModules.value = [];
 }
 function cancelEdit() {
   cancelDrag();
   cancelLayoutEdit(store.settings.home_layout);
   showModules.value = false;
+  if (props.settingsMode) beginEdit();
 }
 function createModule(kind: HomeWidgetKind): HomeWidget {
   return {
@@ -738,6 +739,7 @@ async function persistLayout() {
   try {
     await store.setSetting('home_layout', widgets.value.map(normalizeHomeWidget));
     editing.value = false;
+    if (props.settingsMode) beginEdit();
     showModules.value = false;
     store.notify('首页布局已保存');
   } finally {
@@ -755,13 +757,6 @@ async function saveLayout() {
 
 <template>
   <div class="@container flex min-h-0 w-full flex-1 flex-col">
-    <Dialog v-model:open="captureOpen"
-      ><DialogContent
-        ><DialogHeader
-          ><DialogTitle>快速记录</DialogTitle
-          ><DialogDescription>保存想法、笔记或重要日期。</DialogDescription></DialogHeader
-        ><QuickCapture @saved="captureOpen = false" /></DialogContent
-    ></Dialog>
     <Dialog
       :open="!!moduleSettings"
       @update:open="
@@ -930,17 +925,11 @@ async function saveLayout() {
       ></Dialog
     >
     <div
+      ref="homeScroll"
       data-home-scroll
-      class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain pb-4"
+      class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain"
+      :class="props.previewWidget ? 'pb-0' : 'pb-4'"
     >
-      <section v-if="!editing" class="flex flex-wrap items-center justify-end gap-4">
-        <Button variant="outline" @click="captureOpen = true"
-          ><Plus data-icon="inline-start" />快速记录</Button
-        >
-        <Button variant="outline" @click="beginEdit"
-          ><LayoutDashboard data-icon="inline-start" />编辑首页</Button
-        >
-      </section>
       <Dialog v-model:open="layoutDialog"
         ><DialogContent class="max-h-[85dvh] overflow-y-auto sm:max-w-2xl"
           ><DialogHeader
@@ -1036,68 +1025,110 @@ async function saveLayout() {
           </div>
         </DialogContent></Dialog
       >
-      <Dialog v-model:open="showModules"
-        ><DialogContent class="max-h-[85dvh] overflow-y-auto sm:max-w-3xl"
-          ><DialogHeader
-            ><DialogTitle>添加卡片</DialogTitle
-            ><DialogDescription
-              >选择要添加的卡片，将按选择顺序添加到首页末尾。</DialogDescription
-            ></DialogHeader
-          >
-          <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <button
-              v-for="(name, kind) in widgetNames"
-              :key="kind"
-              type="button"
-              :disabled="widgets.some((item) => item.kind === kind)"
-              :aria-pressed="selectedModules.includes(kind)"
-              class="flex min-h-24 flex-col gap-2 rounded-xl border bg-background p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              :class="
-                selectedModules.includes(kind)
-                  ? 'border-primary bg-primary/5'
-                  : 'hover:border-primary'
-              "
-              @click="toggleModule(kind)"
+      <Dialog v-model:open="showModules">
+        <DialogContent class="flex max-h-[90dvh] flex-col sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>添加卡片</DialogTitle>
+            <DialogDescription>选择卡片和尺寸，预览会显示当前实际内容。</DialogDescription>
+          </DialogHeader>
+          <div class="grid min-h-0 flex-1 gap-4 overflow-hidden md:grid-cols-[13rem_minmax(0,1fr)]">
+            <div
+              class="flex max-h-52 flex-col gap-1 overflow-y-auto rounded-xl border bg-muted/20 p-2 md:max-h-[60dvh]"
+              aria-label="卡片列表"
             >
-              <span class="flex items-center gap-2 text-sm font-medium"
-                ><component :is="moduleIcons[kind]" class="size-4 text-primary" />{{ name
-                }}<span
+              <Button
+                v-for="(name, kind) in widgetNames"
+                :key="kind"
+                variant="ghost"
+                class="h-auto min-h-9 justify-start gap-2 px-2 text-left"
+                :class="selectedModule === kind ? 'bg-primary/10 text-primary' : ''"
+                :aria-pressed="selectedModule === kind"
+                @click="selectModule(kind)"
+              >
+                <component :is="moduleIcons[kind]" />
+                <span class="min-w-0 flex-1 truncate">{{ name }}</span>
+                <span
                   v-if="widgets.some((item) => item.kind === kind)"
-                  class="ml-auto text-xs text-muted-foreground"
+                  class="text-xs text-muted-foreground"
                   >已添加</span
-                ><span
-                  v-else-if="selectedModules.includes(kind)"
-                  class="ml-auto text-xs text-primary"
-                  >已选择</span
-                ></span
-              ><span class="whitespace-pre-line text-xs leading-5 text-muted-foreground">{{
-                modulePreviews[kind]
-              }}</span>
-            </button>
+                >
+              </Button>
+            </div>
+            <div class="flex min-h-0 flex-col gap-3">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 class="font-semibold">{{ widgetNames[selectedModule] }}</h3>
+                  <p class="text-xs text-muted-foreground">实时预览 · 内容仅供查看</p>
+                </div>
+                <Select
+                  :model-value="previewSize"
+                  :disabled="fixedWidgetSize(selectedModule)"
+                  @update:model-value="(value) => (previewSize = value as HomeWidgetSize)"
+                >
+                  <SelectTrigger class="w-52" aria-label="卡片尺寸"><SelectValue /></SelectTrigger>
+                  <SelectContent
+                    ><SelectGroup
+                      ><SelectItem
+                        v-for="size in fixedWidgetSize(selectedModule) ? ['1x1'] : widgetSizes"
+                        :key="size"
+                        :value="size"
+                        >{{
+                          size === '4x1'
+                            ? '4 × 1 · 宽度自适应'
+                            : homeWidgetSizeLabel(size as HomeWidgetSize, gridProfile)
+                        }}</SelectItem
+                      ></SelectGroup
+                    ></SelectContent
+                  >
+                </Select>
+              </div>
+              <div class="min-h-0 flex-1 overflow-auto rounded-xl border bg-muted/30 p-3" inert>
+                <HomePage
+                  :key="selectedModule"
+                  :preview-widget="previewCard"
+                  :preview-profile="gridProfile"
+                />
+              </div>
+              <p v-if="previewSize === '4x1'" class="text-xs text-muted-foreground">
+                窗口较窄时，卡片宽度会适应可用空间。
+              </p>
+              <p v-if="fixedWidgetSize(selectedModule)" class="text-xs text-muted-foreground">
+                此卡片目前固定为 1 × 1。
+              </p>
+            </div>
           </div>
           <div class="flex justify-end gap-2">
-            <Button variant="ghost" @click="showModules = false">取消</Button
-            ><Button :disabled="!selectedModules.length || saving" @click="addSelectedModules"
-              >添加{{ selectedModules.length ? `（${selectedModules.length}）` : '' }}</Button
+            <Button variant="ghost" @click="showModules = false">取消</Button>
+            <Button
+              :disabled="widgets.some((item) => item.kind === selectedModule) || saving"
+              @click="addSelectedModules"
+              >{{
+                widgets.some((item) => item.kind === selectedModule) ? '已添加' : '添加卡片'
+              }}</Button
             >
           </div>
-        </DialogContent></Dialog
-      >
+        </DialogContent>
+      </Dialog>
       <TransitionGroup
-        v-if="widgets.length"
+        v-if="renderedWidgets.length"
         tag="div"
         data-home-grid
         move-class="transition-transform duration-150 ease-out motion-reduce:transition-none"
-        class="grid grid-cols-2 auto-rows-[12.7rem] gap-[16px] @min-[64rem]:grid-cols-4"
+        class="grid shrink-0 grid-cols-[repeat(var(--home-grid-columns,24),var(--home-grid-track))] auto-cols-[var(--home-grid-track)] auto-rows-[var(--home-grid-cell)] content-start gap-[var(--home-grid-gap)]"
+        :style="{
+          '--home-grid-track': `${homeGridTrack(gridProfile)}px`,
+          '--home-grid-cell': `${gridProfile.cell}px`,
+          '--home-grid-gap': `${gridProfile.gap}px`,
+        }"
       >
         <HomeWidgetFrame
-          v-for="widget in widgets"
+          v-for="widget in renderedWidgets"
           :key="widget.id"
           :data-widget-id="widget.id"
           :class="[
-            widgetClasses[widget.size],
+            props.previewWidget ? previewWidgetClasses[widget.size] : widgetClasses[widget.size],
             draggedId === widget.id
-              ? 'opacity-30 ring-2 ring-primary ring-offset-2 ring-offset-background'
+              ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
               : '',
           ]"
         >
@@ -1111,7 +1142,7 @@ async function saveLayout() {
           </div>
           <div
             v-if="editing"
-            class="flex min-h-[2.85rem] shrink-0 items-center justify-between gap-1 border-b border-border bg-muted/50 px-3"
+            class="flex min-h-8 shrink-0 items-center justify-between gap-0.5 border-b border-border bg-muted/50 px-1 @min-[11rem]:min-h-[2.85rem] @min-[11rem]:gap-1 @min-[11rem]:px-3"
           >
             <Button
               variant="ghost"
@@ -1123,7 +1154,9 @@ async function saveLayout() {
               @keydown="moveByKeyboard($event, widget)"
               ><GripVertical
             /></Button>
-            <span class="truncate text-sm font-semibold">{{ widgetNames[widget.kind] }}</span>
+            <span class="hidden truncate text-sm font-semibold @min-[11rem]:inline">{{
+              widgetNames[widget.kind]
+            }}</span>
             <div class="flex shrink-0 gap-1">
               <DropdownMenu v-if="['sticky', 'note', 'countdowns'].includes(widget.kind)"
                 ><DropdownMenuTrigger as-child
@@ -1187,7 +1220,7 @@ async function saveLayout() {
                     :model-value="widget.size"
                     @update:model-value="(value) => resize(widget, value as HomeWidgetSize)"
                     ><DropdownMenuRadioItem v-for="size in widgetSizes" :key="size" :value="size">{{
-                      size.replace('x', '×')
+                      size === '4x1' ? '4 × 1 · 宽度自适应' : homeWidgetSizeLabel(size, gridProfile)
                     }}</DropdownMenuRadioItem></DropdownMenuRadioGroup
                   ></DropdownMenuContent
                 >
@@ -1204,14 +1237,16 @@ async function saveLayout() {
           </div>
           <div
             v-if="!editing"
-            class="flex min-h-[2.85rem] shrink-0 items-center justify-between gap-2 border-b border-border px-4"
+            class="flex min-h-9 shrink-0 items-center justify-between gap-1 border-b border-border/60 px-2 @min-[11rem]:min-h-14 @min-[11rem]:gap-2 @min-[11rem]:px-4"
           >
-            <div class="flex min-w-0 items-center gap-3">
+            <div class="flex min-w-0 items-center gap-2.5">
               <span
-                class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+                class="hidden size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary @min-[11rem]:flex"
                 ><component :is="moduleIcons[widget.kind]" class="size-5"
               /></span>
-              <h2 class="shrink-0 font-semibold">{{ widgetNames[widget.kind] }}</h2>
+              <h2 class="truncate text-sm font-semibold tracking-tight">
+                {{ widgetNames[widget.kind] }}
+              </h2>
               <span
                 v-if="
                   ['weather', 'hitokoto', 'poetry'].includes(widget.kind) && feedUpdates[widget.id]
@@ -1292,11 +1327,7 @@ async function saveLayout() {
                     ? `正在刷新${widgetNames[widget.kind]}`
                     : `刷新${widgetNames[widget.kind]}`
                 "
-                :title="
-                  feedLoading[widget.id]
-                    ? `正在刷新${widgetNames[widget.kind]}`
-                    : `刷新${widgetNames[widget.kind]}`
-                "
+                title="刷新"
                 @click="refreshKeys[widget.kind]++"
                 ><RefreshCw :class="feedLoading[widget.id] ? 'animate-spin' : ''" /></Button
               ><Button
@@ -1311,25 +1342,11 @@ async function saveLayout() {
               /></Button>
             </div>
           </div>
-          <div class="min-h-0 flex-1 overflow-hidden p-2" :inert="editing">
-            <div
-              class="flex h-full min-h-0 flex-col gap-[4px] overflow-y-auto pr-1"
-              :class="
-                [
-                  'countdowns',
-                  'sticky',
-                  'note',
-                  'library',
-                  'quick_launch',
-                  'quick_tools',
-                  'recent',
-                ].includes(widget.kind)
-                  ? widget.size.endsWith('x2')
-                    ? 'max-h-[21.85rem]'
-                    : 'max-h-[8.6rem]'
-                  : ''
-              "
-            >
+          <div
+            class="min-h-0 flex-1 overflow-hidden p-1.5 @min-[11rem]:px-3 @min-[11rem]:py-3 @min-[24rem]:px-4"
+            :inert="editing"
+          >
+            <div class="flex h-full min-h-0 flex-col gap-2 overflow-y-auto">
               <HomeFeed
                 v-if="isOnline(widget.kind)"
                 :kind="widget.kind"
@@ -1346,14 +1363,26 @@ async function saveLayout() {
               <template v-else-if="widget.kind === 'time'"
                 ><div class="flex min-h-0 flex-1 items-center justify-center">
                   <p
-                    class="text-3xl font-semibold tabular-nums tracking-tight @min-[20rem]:text-5xl"
+                    class="text-base font-semibold tabular-nums tracking-tight @min-[11rem]:text-3xl @min-[20rem]:text-5xl"
                   >
                     {{ time }}
                   </p>
                 </div></template
               >
-              <template v-else-if="widget.kind === 'calendar'"
-                ><div class="flex min-h-0 flex-1 flex-col">
+              <template v-else-if="widget.kind === 'calendar'">
+                <div
+                  v-if="widget.size === '1x1' && gridProfile.cell === 100"
+                  class="flex flex-1 flex-col justify-center text-center"
+                >
+                  <span class="text-xs text-muted-foreground"
+                    >{{ now.getFullYear() }} 年 {{ now.getMonth() + 1 }} 月</span
+                  >
+                  <span class="text-2xl font-semibold tabular-nums">{{ now.getDate() }}</span>
+                  <span class="text-xs text-muted-foreground">{{
+                    now.toLocaleDateString('zh-CN', { weekday: 'long' })
+                  }}</span>
+                </div>
+                <div v-else class="flex min-h-0 flex-1 flex-col">
                   <div class="flex shrink-0 items-center justify-between gap-1">
                     <Button
                       variant="ghost"
@@ -1409,14 +1438,14 @@ async function saveLayout() {
               <template v-else-if="widget.kind === 'countdowns'">
                 <div
                   v-if="visibleCountdowns(widget).length"
-                  class="grid gap-[4px]"
+                  class="grid gap-2"
                   :class="widget.size === '2x2' ? '@min-[32rem]:grid-cols-2' : ''"
                 >
                   <Button
                     v-for="item in visibleCountdowns(widget)"
                     :key="item.id"
                     variant="ghost"
-                    class="h-[58px] min-w-0 items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-left"
+                    class="min-h-10 min-w-0 flex-wrap items-center justify-between gap-1 rounded-xl bg-muted/40 px-1.5 py-1 text-left hover:bg-muted/70 @min-[11rem]:min-h-14 @min-[11rem]:gap-3 @min-[11rem]:px-3 @min-[11rem]:py-2"
                     @click="openContent('countdowns', item.id)"
                     ><span class="min-w-0"
                       ><span class="block truncate text-sm font-medium">{{ item.title }}</span
@@ -1441,11 +1470,12 @@ async function saveLayout() {
               </template>
               <template v-else-if="widget.kind === 'sticky'">
                 <Button
-                  v-for="item in visibleStickies(widget)"
+                  v-for="item in widget.size === '1x1' && gridProfile.cell === 100
+                    ? visibleStickies(widget).slice(0, 1)
+                    : visibleStickies(widget)"
                   :key="item.id"
                   variant="ghost"
-                  class="w-full shrink-0 flex-col items-start justify-center gap-0.5 rounded-lg px-3 py-1.5 text-left whitespace-normal"
-                  :class="widget.size.endsWith('x2') ? 'h-[120px]' : 'h-[58px]'"
+                  class="h-auto w-full shrink-0 flex-col items-start justify-start gap-1 rounded-xl bg-muted/30 px-1.5 py-1 text-left whitespace-normal hover:bg-muted/65 @min-[11rem]:px-3 @min-[11rem]:py-2.5"
                   @click="openContent('stickies', item.id)"
                 >
                   <span class="w-full truncate text-sm font-medium">{{
@@ -1478,11 +1508,12 @@ async function saveLayout() {
               </template>
               <template v-else-if="widget.kind === 'note'">
                 <Button
-                  v-for="item in visibleNotes(widget)"
+                  v-for="item in widget.size === '1x1' && gridProfile.cell === 100
+                    ? visibleNotes(widget).slice(0, 1)
+                    : visibleNotes(widget)"
                   :key="item.id"
                   variant="ghost"
-                  class="w-full shrink-0 flex-col items-start justify-center gap-0.5 rounded-lg px-3 py-1.5 text-left whitespace-normal"
-                  :class="widget.size.endsWith('x2') ? 'h-[120px]' : 'h-[58px]'"
+                  class="h-auto w-full shrink-0 flex-col items-start justify-start gap-1 rounded-xl bg-muted/30 px-1.5 py-1 text-left whitespace-normal hover:bg-muted/65 @min-[11rem]:px-3 @min-[11rem]:py-2.5"
                   @click="openContent('notes', item.id)"
                 >
                   <span class="w-full truncate text-sm font-medium">{{
@@ -1517,13 +1548,13 @@ async function saveLayout() {
                 <div
                   v-if="libraryItems.length"
                   role="tabpanel"
-                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-[4px]"
+                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5"
                 >
                   <Button
                     v-for="item in libraryItems"
                     :key="item.id"
                     variant="ghost"
-                    class="h-[58px] min-w-0 flex-col justify-center gap-1 rounded-xl px-1 py-1"
+                    class="h-[4.25rem] min-w-0 flex-col justify-center gap-1.5 rounded-xl px-1 py-1 hover:bg-muted/70"
                     :disabled="openingId === item.id"
                     :aria-label="`打开 ${item.name}`"
                     :title="item.name"
@@ -1553,13 +1584,13 @@ async function saveLayout() {
               <template v-else-if="widget.kind === 'quick_launch'">
                 <div
                   v-if="launchItems(widget).length"
-                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-[4px]"
+                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5"
                 >
                   <Button
                     v-for="item in launchItems(widget)"
                     :key="item.id"
                     variant="ghost"
-                    class="h-[58px] min-w-0 flex-col justify-center gap-1 rounded-xl px-1 py-1"
+                    class="h-[4.25rem] min-w-0 flex-col justify-center gap-1.5 rounded-xl px-1 py-1 hover:bg-muted/70"
                     :disabled="openingId === item.id"
                     :aria-label="`打开 ${item.name}`"
                     :title="item.name"
@@ -1592,13 +1623,13 @@ async function saveLayout() {
               <template v-else-if="widget.kind === 'quick_tools'">
                 <div
                   v-if="toolItems(widget).length"
-                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-[4px]"
+                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5"
                 >
                   <Button
                     v-for="item in toolItems(widget)"
                     :key="item.id"
                     variant="ghost"
-                    class="h-[58px] min-w-0 flex-col justify-center gap-1 rounded-xl px-1 py-1"
+                    class="h-[4.25rem] min-w-0 flex-col justify-center gap-1.5 rounded-xl px-1 py-1 hover:bg-muted/70"
                     :aria-label="`打开 ${item.title}`"
                     :title="item.title"
                     @click="launchTool(item.id)"
@@ -1618,13 +1649,13 @@ async function saveLayout() {
               <template v-else>
                 <div
                   v-if="recentResources.length"
-                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-[4px]"
+                  class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5"
                 >
                   <Button
                     v-for="item in recentResources"
                     :key="item.id"
                     variant="ghost"
-                    class="h-[58px] min-w-0 flex-col justify-center gap-1 rounded-xl px-1 py-1 hover:bg-muted/70"
+                    class="h-[4.25rem] min-w-0 flex-col justify-center gap-1.5 rounded-xl px-1 py-1 hover:bg-muted/70"
                     :disabled="openingId === item.id"
                     :aria-label="`打开 ${item.name}，${kindLabels[item.kind]}，${openedTime(item.last_opened_at)}`"
                     :title="`${item.target}\n${kindLabels[item.kind]} · ${openedTime(item.last_opened_at)}`"
@@ -1661,9 +1692,9 @@ async function saveLayout() {
             >添加日期时间、天气、新闻、诗词和记录模块，组合你的首页。</CardDescription
           ></CardHeader
         ><CardContent
-          ><Button :disabled="saving" @click="openModules"
+          ><Button v-if="props.settingsMode" :disabled="saving" @click="openModules"
             ><Plus data-icon="inline-start" />添加卡片</Button
-          ></CardContent
+          ><Button v-else @click="emit('open-home-settings')">前往首页设置</Button></CardContent
         ></Card
       >
     </div>
@@ -1690,30 +1721,13 @@ async function saveLayout() {
           ></ConfirmDialog
         >
       </div>
-      <div class="ml-auto flex shrink-0 items-center gap-2">
-        <Button variant="ghost" :disabled="saving" @click="cancelEdit">取消</Button
+      <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+        <span class="text-xs text-muted-foreground">离开时自动保存，可在离开前取消修改</span>
+        <Button variant="ghost" :disabled="saving" @click="cancelEdit">取消修改</Button
         ><Button :disabled="saving" @click="saveLayout">{{
           saving ? '保存中…' : '保存布局'
         }}</Button>
       </div>
     </div>
-    <Teleport to="body">
-      <Card
-        v-if="dragWidget"
-        :style="ghostStyle"
-        class="pointer-events-none fixed z-50 select-none gap-4 overflow-hidden border-primary bg-card/95 p-4 shadow-xl"
-      >
-        <div class="flex items-center gap-3">
-          <component :is="moduleIcons[dragWidget.kind]" class="size-5 text-primary" />
-          <h2 class="font-semibold">{{ widgetNames[dragWidget.kind] }}</h2>
-          <span class="ml-auto text-xs text-muted-foreground">{{
-            dragWidget.size.replace('x', '×')
-          }}</span>
-        </div>
-        <p class="line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
-          {{ dragPreviewText }}
-        </p>
-      </Card>
-    </Teleport>
   </div>
 </template>

@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-import { onMounted, onUnmounted, ref, watch, computed } from 'vue';
+import { onMounted, onUnmounted, ref, watch, computed, nextTick } from 'vue';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, RotateCcw, GripVertical, Search, ChevronLeft, ChevronRight } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ import { Switch } from '@/components/ui/switch';
 import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui/field';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { api } from '@/lib/api';
+import { shortcutFromKeyboard } from '@/lib/shortcut-capture';
 import type { BackupStatus, TrashItem } from '@/lib/types';
 import { useWorkspaceStore } from '@/stores/workspace';
 const props = withDefaults(defineProps<{ section?: string }>(), { section: 'all' });
@@ -41,10 +42,12 @@ const store = useWorkspaceStore();
 const emit = defineEmits<{ restoreBackup: [] }>();
 const shortcut = ref(store.settings.launcher.shortcut),
   shortcutError = ref(''),
+  shortcutEditing = ref(false),
+  shortcutRecording = ref(false),
+  shortcutPreview = ref(''),
   saving = ref(false),
   backupBusy = ref(false),
-  notificationBusy = ref(false),
-  notificationStatus = ref('');
+  notificationBusy = ref(false);
 const backupError = ref('');
 const status = ref<BackupStatus>(),
   trash = ref<TrashItem[]>([]),
@@ -98,6 +101,8 @@ const purgeOpen = ref(false),
   purgeId = ref<string | null>(null);
 const startupShortcutError = ref('');
 let removeShortcutListener: UnlistenFn | undefined;
+let removeCaptureListener: UnlistenFn | undefined;
+let captureListenerReady: Promise<boolean> = Promise.resolve(false);
 const panelOrder = computed(() => launcherOrder(store.settings.client));
 const draggedPanel = ref<string | null>(null),
   draftOrder = ref<string[] | null>(null),
@@ -269,6 +274,86 @@ watch(
 let timer: ReturnType<typeof setInterval> | undefined;
 let disposed = false;
 let refreshVersion = 0;
+let shortcutCaptureChain: Promise<void> = Promise.resolve();
+function queueShortcutCapture(active: boolean) {
+  const request = shortcutCaptureChain
+    .catch(() => {})
+    .then(async () => {
+      if (active && !(await captureListenerReady)) throw new Error('无法启用快捷键录入监听');
+      await api.setShortcutCapture(active);
+    });
+  shortcutCaptureChain = request;
+  void request.catch((error) => {
+    if (!disposed) shortcutError.value = String(error);
+  });
+}
+function startShortcutCapture() {
+  if (!shortcutEditing.value || shortcutRecording.value) return;
+  shortcutRecording.value = true;
+  shortcutPreview.value = '';
+  queueShortcutCapture(true);
+}
+function endShortcutCapture() {
+  if (!shortcutRecording.value) return;
+  shortcutRecording.value = false;
+  shortcutPreview.value = '';
+  queueShortcutCapture(false);
+}
+function handleShortcutKey(event: KeyboardEvent) {
+  if (!shortcutEditing.value) return;
+  const hasModifier = event.ctrlKey || event.altKey || event.shiftKey || event.metaKey;
+  if (!hasModifier && event.key === 'Tab') return;
+  if (!hasModifier && event.key === 'Escape') {
+    (event.currentTarget as HTMLElement).blur();
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.isComposing || event.repeat) return;
+  if (/^(Control|Alt|Shift|Meta)(Left|Right)$/.test(event.code)) {
+    const modifiers = [
+      event.ctrlKey && 'Control',
+      event.altKey && 'Alt',
+      event.shiftKey && 'Shift',
+      event.metaKey && 'Super',
+    ].filter(Boolean);
+    shortcutPreview.value = modifiers.length ? `${modifiers.join('+')}+…` : '';
+    return;
+  }
+  const value = shortcutFromKeyboard(event);
+  if (!value) {
+    shortcutPreview.value = '';
+    shortcutError.value = hasModifier
+      ? '不支持此按键，请尝试其他组合。'
+      : '请同时按下修饰键和一个按键。';
+    return;
+  }
+  shortcut.value = value;
+  shortcutPreview.value = '';
+  shortcutError.value = '';
+}
+function handleShortcutKeyup(event: KeyboardEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  if (!event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey)
+    shortcutPreview.value = '';
+}
+function beginShortcutEdit() {
+  shortcutEditing.value = true;
+  shortcutError.value = '';
+  void nextTick(() => document.querySelector<HTMLInputElement>('#launcher-shortcut')?.focus());
+}
+function cancelShortcutEdit() {
+  endShortcutCapture();
+  shortcut.value = store.settings.launcher.shortcut;
+  shortcutEditing.value = false;
+  shortcutError.value = '';
+}
+function onShortcutWindowBlur() {
+  if (!shortcutRecording.value) return;
+  document.querySelector<HTMLInputElement>('#launcher-shortcut')?.blur();
+  endShortcutCapture();
+}
 async function desktopOption(key: 'close_to_tray' | 'autostart', value: boolean) {
   try {
     await store.setSetting('product', { ...store.settings.product, [key]: value });
@@ -324,9 +409,25 @@ async function refresh() {
   if (current()) loading.value = false;
 }
 onMounted(() => {
+  window.addEventListener('blur', onShortcutWindowBlur);
   void refresh();
   timer = setInterval(() => void refresh(), 30000);
-  if (['launcher', 'all'].includes(props.section))
+  if (['launcher', 'all'].includes(props.section)) {
+    captureListenerReady = listen<string>('lumo-shortcut-captured', ({ payload }) => {
+      if (!shortcutEditing.value || !shortcutRecording.value || payload !== 'Alt+Space') return;
+      shortcut.value = payload;
+      shortcutPreview.value = '';
+      shortcutError.value = '';
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return false;
+        }
+        removeCaptureListener = unlisten;
+        return true;
+      })
+      .catch(() => false);
     void listen<string | null>('lumo-shortcut-status', ({ payload }) => {
       startupShortcutError.value = payload ?? '';
     })
@@ -337,11 +438,15 @@ onMounted(() => {
       .catch((e) => {
         if (!disposed) startupShortcutError.value = String(e);
       });
+  }
 });
 onUnmounted(() => {
+  endShortcutCapture();
+  window.removeEventListener('blur', onShortcutWindowBlur);
   disposed = true;
   clearInterval(timer);
   removeShortcutListener?.();
+  removeCaptureListener?.();
 });
 async function configure(
   enabled = store.settings.launcher.enabled,
@@ -350,6 +455,10 @@ async function configure(
 ) {
   saving.value = true;
   try {
+    if (saveShortcut) {
+      endShortcutCapture();
+      await shortcutCaptureChain;
+    }
     store.settings = await api.configureLauncher({
       ...store.settings.launcher,
       enabled,
@@ -358,6 +467,7 @@ async function configure(
     });
     shortcutError.value = '';
     startupShortcutError.value = '';
+    if (saveShortcut) shortcutEditing.value = false;
     store.notify('快捷启动设置已保存');
   } catch (e) {
     shortcutError.value = String(e);
@@ -388,11 +498,10 @@ async function backupNow() {
 }
 async function testNotification() {
   notificationBusy.value = true;
-  notificationStatus.value = '';
   try {
-    notificationStatus.value = await api.testReminderNotification();
+    store.notify(await api.testReminderNotification());
   } catch (e) {
-    notificationStatus.value = String(e);
+    store.notify(String(e));
   } finally {
     notificationBusy.value = false;
   }
@@ -489,16 +598,6 @@ function date(value: string | null) {
             @click="api.openNotificationSettings().catch((e) => store.notify(String(e)))"
             >打开通知设置</Button
           >
-          <p
-            v-if="notificationStatus"
-            role="status"
-            class="text-sm"
-            :class="
-              notificationStatus.includes('不可用') ? 'text-destructive' : 'text-muted-foreground'
-            "
-          >
-            {{ notificationStatus }}
-          </p>
         </div></Field
       >
       <Field
@@ -518,17 +617,36 @@ function date(value: string | null) {
         <div class="flex max-w-lg gap-2">
           <Input
             id="launcher-shortcut"
-            v-model="shortcut"
-            placeholder="Alt+Space"
-            @keydown.enter="
-              configure(store.settings.launcher.enabled, store.settings.launcher.minimal_mode, true)
-            "
+            :model-value="shortcutPreview || shortcut"
+            :tabindex="shortcutEditing ? 0 : -1"
+            :aria-label="shortcutEditing ? '按下新的快捷键组合' : '当前快捷键'"
+            :aria-readonly="true"
+            :data-shortcut-capture="shortcutEditing ? '' : undefined"
+            readonly
+            @focus="startShortcutCapture"
+            @blur="endShortcutCapture"
+            @keydown="handleShortcutKey"
+            @keyup="handleShortcutKeyup"
           /><Button
+            v-if="!shortcutEditing"
+            variant="outline"
             :disabled="saving"
-            @click="
-              configure(store.settings.launcher.enabled, store.settings.launcher.minimal_mode, true)
-            "
-            >保存</Button
+            @click="beginShortcutEdit"
+            >修改</Button
+          ><template v-else
+            ><Button
+              :disabled="saving"
+              @click="
+                configure(
+                  store.settings.launcher.enabled,
+                  store.settings.launcher.minimal_mode,
+                  true,
+                )
+              "
+              >保存</Button
+            ><Button variant="ghost" :disabled="saving" @click="cancelShortcutEdit"
+              >取消</Button
+            ></template
           ><Button
             variant="outline"
             @click="api.showLauncher().catch((e) => store.notify(String(e)))"
@@ -541,8 +659,12 @@ function date(value: string | null) {
           role="alert"
           >{{ shortcutError || startupShortcutError }}</FieldDescription
         ><FieldDescription v-else
-          >默认 Alt + Space，启动后自动生效。也可设置 Control+Alt+Space；修改后点击保存。面板支持 ↑
-          ↓、Enter 和 Esc。</FieldDescription
+          >{{
+            shortcutEditing
+              ? '点击输入框并按下组合键，然后点击保存；Esc 可结束录入。'
+              : '默认 Alt + Space，点击修改后按下新的组合键，再点击保存。'
+          }}
+          面板支持方向键、Enter 和 Esc。</FieldDescription
         ></Field
       >
       <Field

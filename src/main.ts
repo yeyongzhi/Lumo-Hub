@@ -1,7 +1,9 @@
-import { createApp } from 'vue';
+import { createApp, h, Fragment } from 'vue';
 import { createPinia } from 'pinia';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isTauri } from '@tauri-apps/api/core';
+import Toaster from '@/components/ui/sonner/Toaster.vue';
+import 'vue-sonner/style.css';
 import './assets/main.css';
 
 if (import.meta.env.PROD && isTauri()) {
@@ -19,6 +21,8 @@ if (import.meta.env.PROD && isTauri()) {
   window.addEventListener(
     'keydown',
     (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest('[data-shortcut-capture]'))
+        return;
       if (
         event.key === 'F5' ||
         ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'r')
@@ -37,6 +41,8 @@ async function mountWindow() {
     : isTauri() && getCurrentWindow().label === 'quick-launch'
       ? import('./views/LaunchPanel.vue')
       : import('./App.vue'));
-  createApp(root).use(createPinia()).mount('#app');
+  createApp({ render: () => h(Fragment, [h(root), h(Toaster)]) })
+    .use(createPinia())
+    .mount('#app');
 }
 void mountWindow();

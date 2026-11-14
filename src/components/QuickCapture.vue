@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { api } from '@/lib/api';
 import { useWorkspaceStore } from '@/stores/workspace';
+import { useToastMessage } from '@/lib/toast-message';
 import type { Countdown, SearchResult } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +28,7 @@ const store = useWorkspaceStore(),
   date = ref(''),
   busy = ref(false),
   savedId = ref(''),
-  error = ref('');
+  error = useToastMessage();
 async function save() {
   if (busy.value || !text.value.trim() || (kind.value === 'countdown' && !date.value)) return;
   busy.value = true;
@@ -109,6 +110,5 @@ async function save() {
         busy ? '保存中…' : '保存记录'
       }}</Button>
     </div>
-    <p v-if="error" class="text-sm text-destructive" role="alert">{{ error }}</p>
   </form>
 </template>

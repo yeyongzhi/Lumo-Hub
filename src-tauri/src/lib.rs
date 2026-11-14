@@ -37,6 +37,7 @@ pub struct AppState {
     pub paths: storage::StoragePaths,
     pub settings: Mutex<AppSettings>,
     pub shortcut_error: Mutex<Option<String>>,
+    pub shortcut_capture: Mutex<Option<launcher::ShortcutCapture>>,
     pub backup_error: Mutex<Option<String>>,
 }
 
@@ -59,8 +60,21 @@ pub fn run() {
                 let _ = app.emit("lumo-clean-uninstall", ());
             }
         }))
-        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app,_,event| {
-            if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed { launcher::toggle(app); }
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app,shortcut,event| {
+            if event.state() != tauri_plugin_global_shortcut::ShortcutState::Pressed { return; }
+            if let Some(state) = app.try_state::<AppState>() {
+                match state.shortcut_capture.try_lock() {
+                    Ok(capture) if capture.is_some() => {
+                        if shortcut == &launcher::capture_alt_space() {
+                            let _ = app.emit("lumo-shortcut-captured", "Alt+Space");
+                        }
+                        return;
+                    }
+                    Err(_) => return,
+                    _ => {}
+                }
+            }
+            launcher::toggle(app);
         }).build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -102,7 +116,7 @@ pub fn run() {
                 recovery_error: Mutex::new(recovery_error),
                 paths,
                 settings: Mutex::new(settings),
-                shortcut_error: Mutex::new(None), backup_error: Mutex::new(None),
+                shortcut_error: Mutex::new(None), shortcut_capture: Mutex::new(None), backup_error: Mutex::new(None),
             });
             builtin_tools::start(app.handle().clone());
             desktop::setup(app.handle()).map_err(std::io::Error::other)?;
@@ -124,7 +138,7 @@ pub fn run() {
             local_files::read_local,local_files::write_local,desktop::close_main, desktop::export_markdown,
             search::search_resources, updates::check_app_update,
             recycle::list_trash, recycle::restore_trash, recycle::purge_trash,
-            launcher::show_launcher, launcher::hide_launcher, launcher::open_startup_view, launcher::open_main_page, launcher::configure_launcher, launcher::launcher_status,
+            launcher::show_launcher, launcher::hide_launcher, launcher::open_startup_view, launcher::open_main_page, launcher::configure_launcher, launcher::set_shortcut_capture, launcher::launcher_status,
             automatic_backup::run_auto_backup, automatic_backup::auto_backup_status,
             library_actions::resource_health, library_actions::reveal_resource, library_actions::batch_resources,
             commands::bootstrap_state,

@@ -60,12 +60,12 @@ const currentMonthDays = computed(() => {
       class="flex min-w-0 flex-col justify-center"
       :class="
         size === '2x2'
-          ? 'items-start gap-4 border-r border-border/60 px-2 pr-4'
+          ? 'items-start gap-3 border-r border-border/50 px-2 pr-4'
           : 'w-full flex-1 gap-1'
       "
     >
       <p
-        class="text-2xl font-semibold tabular-nums tracking-tight @min-[20rem]:text-3xl @min-[32rem]:text-4xl"
+        class="text-base font-semibold tabular-nums tracking-tight @min-[11rem]:text-2xl @min-[20rem]:text-3xl @min-[32rem]:text-4xl"
       >
         {{ time }}
       </p>
@@ -80,7 +80,7 @@ const currentMonthDays = computed(() => {
     </div>
     <div
       v-if="size === '2x2'"
-      class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-muted/30 p-2"
+      class="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-muted/35 p-2"
       :aria-label="`${clockCalendarMonth}日历`"
     >
       <div class="flex shrink-0 items-center justify-between gap-1">

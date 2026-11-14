@@ -267,6 +267,11 @@ pub fn set_setting(
             }
             settings.theme_mode = v.to_string();
         }
+        "appearance_mode" => {
+            let mode = value.as_str().ok_or("界面背景无效")?;
+            if !["solid", "glass"].contains(&mode) { return Err("不支持的界面背景".into()); }
+            settings.appearance_mode = mode.to_string();
+        }
         "accent" => {
             let v = value.as_str().ok_or("强调色无效")?;
             if ![

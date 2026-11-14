@@ -9,6 +9,10 @@ import {
   launchOptions,
   targetKey,
   stableResourceOrder,
+  libraryColumnOptions,
+  libraryColumns,
+  libraryIconSize,
+  libraryInitialFilter,
 } from '@/lib/library-preferences';
 import { writeLocal } from '@/lib/local-files';
 import { askConfirmation } from '@/lib/confirm';
@@ -191,7 +195,13 @@ async function setFixed(id: string, enabled: boolean) {
     store.notify(String(e));
   }
 }
-const activeFilter = ref('all');
+const activeFilter = ref(libraryInitialFilter(store.settings.client, store.groups));
+watch(activeFilter, (value) => {
+  if (!store.searchTarget)
+    void store
+      .saveClient('lumo-library-last-filter', value)
+      .catch((error) => store.notify(String(error)));
+});
 const displayMode = ref<'grid' | 'list'>(
   store.settings.client?.['lumo-library-display'] === 'list' ? 'list' : 'grid',
 );
@@ -214,10 +224,16 @@ const launcherTile = computed(() =>
     ? 'h-28 w-full min-w-0 flex-col items-center justify-center gap-3 rounded-2xl px-3 py-3 has-[>svg]:px-3'
     : 'min-h-16 h-auto w-full min-w-0 justify-start gap-3 rounded-xl px-4 py-3',
 );
-const launcherIcon = computed(() =>
-  displayMode.value === 'grid'
-    ? 'size-10 shrink-0 object-contain'
-    : 'size-8 shrink-0 object-contain',
+const launcherIcon = computed(() => {
+  const size = libraryIconSize(store.settings.client);
+  const classes =
+    displayMode.value === 'grid'
+      ? { small: 'size-8', standard: 'size-10', large: 'size-14' }
+      : { small: 'size-6', standard: 'size-8', large: 'size-10' };
+  return `${classes[size]} shrink-0 object-contain`;
+});
+const showGridNames = computed(
+  () => store.settings.client?.['lumo-library-grid-show-names'] !== false,
 );
 watch(
   () => store.groups,
@@ -237,15 +253,7 @@ const organizerOpen = ref(false),
   formSaving = ref(false),
   importing = ref(false);
 const density = ref(String(store.settings.client?.['lumo-library-density'] ?? 'standard'));
-const listColumns = ref<string[]>(
-  (store.settings.client?.['lumo-library-columns'] as string[] | undefined) ?? ['group'],
-);
-const listColumnOptions = [
-  { id: 'path', name: '启动路径' },
-  { id: 'developer', name: '开发者' },
-  { id: 'group', name: '分组' },
-  { id: 'recent', name: '最近使用' },
-];
+const listColumns = ref<string[]>(libraryColumns(store.settings.client));
 function toggleColumn(id: string, enabled: boolean) {
   listColumns.value = enabled
     ? [...new Set([...listColumns.value, id])]
@@ -1618,7 +1626,7 @@ function iconFor(kind: ResourceKind) {
             ><DropdownMenuContent
               ><DropdownMenuGroup
                 ><DropdownMenuCheckboxItem
-                  v-for="column in listColumnOptions"
+                  v-for="column in libraryColumnOptions"
                   :key="column.id"
                   :model-value="listColumns.includes(column.id)"
                   @select="$event.preventDefault()"
@@ -1694,6 +1702,7 @@ function iconFor(kind: ResourceKind) {
                 variant="ghost"
                 :class="launcherTile"
                 :title="item.name"
+                :aria-label="item.name"
                 :aria-busy="commonOpening.has(item.id)"
                 :disabled="commonOpening.has(item.id)"
                 @click="launchCommon(item.id)"
@@ -1711,6 +1720,7 @@ function iconFor(kind: ResourceKind) {
                   v-else
                   :class="[launcherIcon, 'text-muted-foreground']"
                 /><span
+                  v-if="displayMode === 'list' || showGridNames"
                   class="min-w-0 truncate text-sm"
                   :class="displayMode === 'grid' ? 'w-full text-center' : 'flex-1 text-left'"
                   >{{ commonOpening.has(item.id) ? '正在打开…' : item.name }}</span
@@ -1817,23 +1827,27 @@ function iconFor(kind: ResourceKind) {
                         v-if="displayMode === 'list'"
                         class="w-7 shrink-0 text-center text-sm tabular-nums text-muted-foreground"
                         >{{ shownCommon.length + index + 1 }}</span
-                      ><span
-                        class="relative shrink-0"
-                        :class="displayMode === 'grid' ? 'size-10' : 'size-8'"
+                      ><span class="relative" :class="launcherIcon"
                         ><img
                           v-if="resourceImage(store.settings.client, item)"
                           :src="resourceImage(store.settings.client, item)!"
                           alt=""
-                          :class="launcherIcon" /><component
+                          class="size-full object-contain" /><component
                           :is="iconFor(item.kind)"
                           v-else
-                          :class="[launcherIcon, 'text-primary']" /></span
+                          class="size-full text-primary" /></span
                       ><span
+                        v-if="
+                          displayMode === 'list' ||
+                          showGridNames ||
+                          resourceHealth[item.id] === false
+                        "
                         class="min-w-0"
                         :class="displayMode === 'grid' ? 'w-full text-center' : 'flex-1 text-left'"
-                        ><span class="block truncate text-sm">{{
-                          openingIds.has(item.id) ? '正在打开…' : item.name
-                        }}</span
+                        ><span
+                          v-if="displayMode === 'list' || showGridNames"
+                          class="block truncate text-sm"
+                          >{{ openingIds.has(item.id) ? '正在打开…' : item.name }}</span
                         ><span
                           v-if="resourceHealth[item.id] === false"
                           class="text-destructive"

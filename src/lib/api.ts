@@ -43,6 +43,7 @@ export const api = {
   hideLauncher: () => invoke<void>('hide_launcher'),
   configureLauncher: (value: AppSettings['launcher']) =>
     invoke<AppSettings>('configure_launcher', { value }),
+  setShortcutCapture: (active: boolean) => invoke<void>('set_shortcut_capture', { active }),
   launcherStatus: () => invoke<string | null>('launcher_status'),
   revealResource: (id: string) => invoke<void>('reveal_resource', { id }),
   batchResources: (

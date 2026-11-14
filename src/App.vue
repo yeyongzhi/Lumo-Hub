@@ -59,22 +59,64 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+type WindowResizeDirection =
+  'North' | 'South' | 'East' | 'West' | 'NorthEast' | 'NorthWest' | 'SouthEast' | 'SouthWest';
+function resizeWindow(event: PointerEvent, direction: WindowResizeDirection) {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  void getCurrentWindow()
+    .startResizeDragging(direction)
+    .catch((error) => {
+      console.error('窗口缩放失败', error);
+    });
+}
+
 const store = useWorkspaceStore();
 const page = ref<PageId>('home');
-const settingsRequest = ref<{ checkUpdate: boolean; id: number } | null>(null);
+const settingsRequest = ref<{ section: 'about' | 'home'; checkUpdate: boolean; id: number } | null>(
+  null,
+);
 async function openAbout(checkUpdate = false) {
   if (!(await navigate('settings'))) return;
-  settingsRequest.value = { checkUpdate, id: (settingsRequest.value?.id ?? 0) + 1 };
+  settingsRequest.value = {
+    section: 'about',
+    checkUpdate,
+    id: (settingsRequest.value?.id ?? 0) + 1,
+  };
+}
+async function openHomeSettings() {
+  if (!(await navigate('settings'))) return;
+  settingsRequest.value = {
+    section: 'home',
+    checkUpdate: false,
+    id: (settingsRequest.value?.id ?? 0) + 1,
+  };
 }
 const captureOpen = ref(false),
   shortcutsOpen = ref(false),
-  captureText = ref('');
-function showCapture(text = '') {
+  captureText = ref(''),
+  captureKind = ref('sticky'),
+  captureMenuOpen = ref(false);
+let captureMenuTimer: ReturnType<typeof setTimeout> | undefined;
+function openCaptureMenu() {
+  clearTimeout(captureMenuTimer);
+  captureMenuOpen.value = true;
+}
+function closeCaptureMenu() {
+  clearTimeout(captureMenuTimer);
+  captureMenuTimer = setTimeout(() => {
+    captureMenuOpen.value = false;
+  }, 180);
+}
+function showCapture(text = '', kind = 'sticky') {
+  captureMenuOpen.value = false;
   captureText.value = text;
+  captureKind.value = kind;
   captureOpen.value = true;
 }
 async function addFromSearch() {
@@ -408,6 +450,7 @@ onUnmounted(() => {
   removeCleanUninstallListener?.();
   removeResourceListener?.();
   removeNavigationListener?.();
+  clearTimeout(captureMenuTimer);
 });
 </script>
 
@@ -419,6 +462,7 @@ onUnmounted(() => {
         ><DialogDescription>保存便签、笔记或重要日期。</DialogDescription></DialogHeader
       ><QuickCapture
         :initial-text="captureText"
+        :initial-kind="captureKind"
         @saved="
           (item) => {
             captureOpen = false;
@@ -499,9 +543,6 @@ onUnmounted(() => {
         <Button @click="chooseRecoveryDirectory">导入已有数据目录</Button
         ><Button variant="outline" @click="useDefaultRecoveryDirectory">修复后重试</Button>
       </div>
-      <p v-if="store.message" role="status" class="mt-4 text-sm text-destructive">
-        {{ store.message }}
-      </p>
     </Card>
   </main>
   <main
@@ -538,9 +579,6 @@ onUnmounted(() => {
         </ConfirmDialog>
         <Button variant="outline" @click="closeWindow">取消并关闭</Button>
       </div>
-      <p v-if="store.message" role="status" class="mt-4 text-sm text-destructive">
-        {{ store.message }}
-      </p>
     </Card>
   </main>
   <main
@@ -569,9 +607,49 @@ onUnmounted(() => {
       <p class="mt-8 text-xs text-muted-foreground">简洁、本地、属于你的工作台</p>
     </Card>
   </main>
-  <div v-else class="flex h-dvh flex-col overflow-hidden border bg-background">
+  <div v-else class="app-shell flex h-dvh flex-col overflow-hidden border bg-background">
+    <div
+      aria-hidden="true"
+      class="fixed inset-x-2 top-0 z-50 h-1.5 cursor-n-resize"
+      @pointerdown="resizeWindow($event, 'North')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed inset-x-2 bottom-0 z-50 h-1.5 cursor-s-resize"
+      @pointerdown="resizeWindow($event, 'South')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed inset-y-2 left-0 z-50 w-1.5 cursor-w-resize"
+      @pointerdown="resizeWindow($event, 'West')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed inset-y-2 right-0 z-50 w-1.5 cursor-e-resize"
+      @pointerdown="resizeWindow($event, 'East')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed left-0 top-0 z-50 size-2 cursor-nw-resize"
+      @pointerdown="resizeWindow($event, 'NorthWest')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed right-0 top-0 z-50 size-2 cursor-ne-resize"
+      @pointerdown="resizeWindow($event, 'NorthEast')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed bottom-0 left-0 z-50 size-2 cursor-sw-resize"
+      @pointerdown="resizeWindow($event, 'SouthWest')"
+    />
+    <div
+      aria-hidden="true"
+      class="fixed bottom-0 right-0 z-50 size-2 cursor-se-resize"
+      @pointerdown="resizeWindow($event, 'SouthEast')"
+    />
     <header
-      class="relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border bg-background/90 px-6 py-2 backdrop-blur"
+      class="relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border px-6 py-2"
       @mousedown="startWindowDrag"
     >
       <div class="flex min-w-0 flex-1 items-center gap-2">
@@ -709,6 +787,36 @@ onUnmounted(() => {
         </div>
       </div>
       <div class="flex min-w-0 flex-1 items-center justify-end gap-1">
+        <DropdownMenu v-model:open="captureMenuOpen" :modal="false">
+          <DropdownMenuTrigger as-child>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="快速记录"
+              disable-tooltip
+              @pointerenter="openCaptureMenu"
+              @pointerleave="closeCaptureMenu"
+              ><Plus
+            /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            @pointerenter="openCaptureMenu"
+            @pointerleave="closeCaptureMenu"
+          >
+            <DropdownMenuLabel>快速记录</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem @select="showCapture('', 'sticky')"
+              ><StickyNoteIcon />便签</DropdownMenuItem
+            >
+            <DropdownMenuItem @select="showCapture('', 'note')"
+              ><NotebookPen />笔记</DropdownMenuItem
+            >
+            <DropdownMenuItem @select="showCapture('', 'countdown')"
+              ><CalendarPlus />重要日期</DropdownMenuItem
+            >
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button variant="ghost" size="icon-sm" aria-label="刷新" title="刷新" @click="reloadPage"
           ><RefreshCw /></Button
         ><Button
@@ -731,7 +839,7 @@ onUnmounted(() => {
     </header>
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <aside
-        class="relative flex shrink-0 flex-col border-r border-border bg-card/70"
+        class="relative flex shrink-0 flex-col border-r border-border"
         :class="sidebarDragWidth === null ? 'transition-[width] duration-200' : 'select-none'"
         :style="{ width: sidebarCollapsed ? '4.5rem' : `${sidebarWidth}px` }"
       >
@@ -812,24 +920,10 @@ onUnmounted(() => {
             :is="currentView"
             v-bind="page === 'settings' ? { request: settingsRequest } : {}"
             @navigate="navigate"
+            @open-home-settings="openHomeSettings"
           />
         </main>
       </section>
-    </div>
-    <div
-      v-if="store.message"
-      role="status"
-      class="fixed bottom-6 right-6 z-50 max-w-lg rounded-2xl border border-border bg-popover px-4 py-3 text-sm shadow-lg"
-    >
-      {{ store.message
-      }}<Button
-        v-if="store.undoAction"
-        variant="link"
-        size="sm"
-        :disabled="store.undoBusy"
-        @click="store.undoAction()"
-        >撤销</Button
-      >
     </div>
   </div>
 </template>

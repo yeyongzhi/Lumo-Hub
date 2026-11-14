@@ -97,6 +97,7 @@ export interface AppSettings {
   client?: Record<string, unknown>;
   product: ProductSettings;
   theme_mode: 'light' | 'dark' | 'system';
+  appearance_mode: 'solid' | 'glass';
   accent: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'indigo' | 'violet';
   font_size: number;
   border_radius: number;

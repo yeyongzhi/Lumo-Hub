@@ -2,6 +2,15 @@ use crate::{models::LauncherSettings, storage, AppState};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
+pub struct ShortcutCapture {
+    original_registered: bool,
+    temporary_alt_space: bool,
+}
+
+pub fn capture_alt_space() -> Shortcut {
+    "Alt+Space".parse().expect("built-in shortcut must be valid")
+}
+
 pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
     let launcher = app
         .state::<AppState>()
@@ -27,6 +36,8 @@ pub fn show(app: &tauri::AppHandle) -> Result<(), String> {
         .inner_size(1040.0, 720.0)
         .resizable(false)
         .decorations(false)
+        .shadow(false)
+        .transparent(true)
         .devtools(false)
         .always_on_top(true)
         .skip_taskbar(true)
@@ -139,6 +150,45 @@ pub fn hide_launcher(app: tauri::AppHandle) -> Result<(), String> {
         .ok_or("快捷面板不可用")?
         .hide()
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_shortcut_capture(app: tauri::AppHandle, state: State<'_, AppState>, active: bool) -> Result<(), String> {
+    let _operation = state.data_operation.lock().map_err(|_| "数据操作不可用")?;
+    let settings = state.settings.lock().map_err(|_| "设置不可用")?;
+    let mut capture = state.shortcut_capture.lock().map_err(|_| "快捷键录入状态不可用")?;
+    if active {
+        if capture.is_some() { return Ok(()); }
+        let original: Shortcut = settings.launcher.shortcut.parse().map_err(|e| format!("原快捷键无效：{e}"))?;
+        let alt_space = capture_alt_space();
+        let registered = settings.launcher.enabled && app.global_shortcut().is_registered(original);
+        if registered && original != alt_space {
+            app.global_shortcut().unregister(settings.launcher.shortcut.as_str()).map_err(|e| format!("无法暂停快捷键：{e}"))?;
+        }
+        let temporary_alt_space = !app.global_shortcut().is_registered(alt_space);
+        if temporary_alt_space {
+            if let Err(error) = app.global_shortcut().register(alt_space) {
+                if registered && original != alt_space {
+                    if let Err(restore_error) = app.global_shortcut().register(original) {
+                        *capture = Some(ShortcutCapture { original_registered: true, temporary_alt_space: false });
+                        return Err(format!("无法录入 Alt+Space：{error}；恢复原快捷键失败：{restore_error}"));
+                    }
+                }
+                return Err(format!("无法录入 Alt+Space，可能被其他软件占用：{error}"));
+            }
+        }
+        *capture = Some(ShortcutCapture { original_registered: registered, temporary_alt_space });
+    } else if let Some(recording) = capture.as_mut() {
+        if recording.temporary_alt_space {
+            app.global_shortcut().unregister(capture_alt_space()).map_err(|e| format!("无法结束快捷键录入：{e}"))?;
+            recording.temporary_alt_space = false;
+        }
+        if recording.original_registered && settings.launcher.enabled && !app.global_shortcut().is_registered(settings.launcher.shortcut.as_str()) {
+            app.global_shortcut().register(settings.launcher.shortcut.as_str()).map_err(|e| format!("无法恢复原快捷键：{e}"))?;
+        }
+        *capture = None;
+    }
+    Ok(())
 }
 
 #[tauri::command]

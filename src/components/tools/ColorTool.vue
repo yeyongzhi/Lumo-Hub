@@ -9,12 +9,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Slider } from '@/components/ui/slider';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { readLocal, writeLocal } from '@/lib/local-files';
+import { useToastMessage } from '@/lib/toast-message';
 const hue = ref([260]),
   saturation = ref([70]),
   lightness = ref([60]),
   hex = ref('#9366E0'),
   colors = ref<string[]>([]),
-  message = ref('');
+  message = useToastMessage();
 const paletteTab = ref('classic');
 const rgb = computed(() => {
   const h = hex.value.replace('#', '');
@@ -226,6 +227,5 @@ onMounted(async () => {
         ></TabsContent>
       </Tabs>
     </section>
-    <p v-if="message" role="status" class="text-sm text-muted-foreground">{{ message }}</p>
   </div>
 </template>

@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct AppSettings { #[serde(default)] pub client:std::collections::HashMap<String,serde_json::Value>,
     #[serde(default)] pub product: ProductSettings,
     pub theme_mode: String,
+    #[serde(default = "default_appearance_mode")]
+    pub appearance_mode: String,
     pub accent: String,
     pub font_size: u8,
     #[serde(default = "default_border_radius")]
@@ -50,6 +52,7 @@ pub fn migrate_common_launchers(settings: &mut AppSettings) {
 fn default_sidebar_width() -> u16 { 240 }
 
 fn default_border_radius() -> u8 { 16 }
+fn default_appearance_mode() -> String { "glass".into() }
 
 fn default_home_layout() -> Vec<HomeWidget> {
     [("clock", "2x1"), ("countdowns", "2x1"), ("sticky", "1x1"), ("note", "1x1"), ("recent", "2x1")]
@@ -61,6 +64,7 @@ impl Default for AppSettings {
         Self {
             client:Default::default(),product: ProductSettings::default(),
             theme_mode: "system".into(),
+            appearance_mode: default_appearance_mode(),
             accent: "blue".into(),
             font_size: 14,
             border_radius: default_border_radius(),

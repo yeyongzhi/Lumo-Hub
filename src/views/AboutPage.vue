@@ -6,10 +6,22 @@ import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { Update } from '@tauri-apps/plugin-updater';
-import { Download, RefreshCw, ShieldCheck, ExternalLink, ScrollText } from '@lucide/vue';
+import { Download, RefreshCw, ShieldCheck, ExternalLink, ScrollText, Copy } from '@lucide/vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useWorkspaceStore } from '@/stores/workspace';
+const store = useWorkspaceStore();
 const version = ref('读取中…');
+const versionReady = ref(false);
+async function copyVersion() {
+  if (!versionReady.value) return;
+  try {
+    await navigator.clipboard.writeText(version.value);
+    store.notify('版本号已复制');
+  } catch (error) {
+    store.notify(`复制版本号失败：${String(error)}`);
+  }
+}
 const checking = ref(false);
 const installing = ref(false);
 const progress = ref(0);
@@ -32,6 +44,7 @@ async function openProject() {
 onMounted(async () => {
   try {
     version.value = await getVersion();
+    versionReady.value = true;
   } catch {
     version.value = '未知版本';
   }
@@ -98,7 +111,17 @@ defineExpose({ checkUpdate });
     <div>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 class="text-2xl font-semibold">Lumo-Hub</h2>
-        <Badge class="px-3 py-1 text-sm">版本 {{ version }}</Badge>
+        <div class="flex items-center gap-1">
+          <Badge class="px-3 py-1 text-sm">版本 {{ version }}</Badge>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="复制版本号"
+            :disabled="!versionReady"
+            @click="copyVersion"
+            ><Copy
+          /></Button>
+        </div>
       </div>
       <p class="mt-1 text-sm text-muted-foreground">本地优先的个人桌面效率工作台</p>
     </div>

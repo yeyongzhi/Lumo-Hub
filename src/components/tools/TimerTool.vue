@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToastMessage } from '@/lib/toast-message';
 
 type Mode = 'pomodoro' | 'countdown' | 'stopwatch';
 const mode = ref<Mode>('pomodoro');
@@ -15,7 +16,7 @@ const started = ref(false);
 const running = ref(false);
 const complete = ref(false);
 const elapsed = ref(0);
-const message = ref('');
+const message = useToastMessage();
 let startedAt = 0;
 let previouslyElapsed = 0;
 let ticker: ReturnType<typeof setInterval> | undefined;
@@ -154,6 +155,5 @@ onUnmounted(stopTicker);
       </Button>
       <Button variant="outline" :disabled="!started" @click="reset">重置</Button>
     </div>
-    <p v-if="message" role="status" class="text-sm text-muted-foreground">{{ message }}</p>
   </div>
 </template>

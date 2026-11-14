@@ -1,5 +1,54 @@
 import type { Resource, LaunchOptions } from './types';
 
+export const libraryColumnOptions = [
+  { id: 'path', name: '启动路径' },
+  { id: 'developer', name: '开发者' },
+  { id: 'group', name: '分组' },
+  { id: 'recent', name: '最近使用' },
+] as const;
+
+export function libraryColumns(client: Record<string, unknown> | undefined): string[] {
+  const saved = client?.['lumo-library-columns'];
+  if (!Array.isArray(saved)) return ['group'];
+  const allowed = new Set<string>(libraryColumnOptions.map((column) => column.id));
+  return [
+    ...new Set(
+      saved.filter((value): value is string => typeof value === 'string' && allowed.has(value)),
+    ),
+  ];
+}
+
+export function libraryIconSize(
+  client: Record<string, unknown> | undefined,
+): 'small' | 'standard' | 'large' {
+  const value = client?.['lumo-library-icon-size'];
+  return value === 'small' || value === 'large' ? value : 'standard';
+}
+
+function validLibraryFilter(value: unknown, groups: readonly { id: string }[]): value is string {
+  if (typeof value !== 'string') return false;
+  if (['all', 'app', 'web', 'file', 'favorites', 'common', 'pinned'].includes(value)) return true;
+  return value.startsWith('group:') && groups.some((group) => value === `group:${group.id}`);
+}
+
+export function libraryDefaultFilter(
+  client: Record<string, unknown> | undefined,
+  groups: readonly { id: string }[],
+): string {
+  const value = client?.['lumo-library-default-filter'];
+  return value === 'remember' || validLibraryFilter(value, groups) ? value : 'all';
+}
+
+export function libraryInitialFilter(
+  client: Record<string, unknown> | undefined,
+  groups: readonly { id: string }[],
+): string {
+  const selected = libraryDefaultFilter(client, groups);
+  if (selected !== 'remember') return selected;
+  const last = client?.['lumo-library-last-filter'];
+  return validLibraryFilter(last, groups) ? last : 'all';
+}
+
 export function targetKey(kind: string, target: string) {
   if (kind === 'web') {
     try {

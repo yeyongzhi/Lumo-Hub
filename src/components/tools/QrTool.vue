@@ -7,10 +7,11 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
+import { useToastMessage } from '@/lib/toast-message';
 const text = ref(''),
   image = ref(''),
   decoded = ref(''),
-  message = ref(''),
+  message = useToastMessage(),
   file = ref<HTMLInputElement>();
 let generation = 0;
 watch(text, async (value) => {
@@ -119,8 +120,5 @@ async function copy() {
         >复制识别结果</Button
       >
     </section>
-    <p v-if="message" role="status" class="col-span-2 text-sm text-muted-foreground">
-      {{ message }}
-    </p>
   </div>
 </template>

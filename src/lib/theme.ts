@@ -16,6 +16,7 @@ export function applySettings(settings: AppSettings) {
   root.dataset.theme =
     settings.theme_mode === 'system' ? (prefersDark ? 'dark' : 'light') : settings.theme_mode;
   root.dataset.themeMode = settings.theme_mode;
+  root.dataset.appearance = settings.appearance_mode ?? 'glass';
   root.dataset.accent = settings.accent;
   root.style.setProperty('--accent-color', accents[settings.accent]);
   root.style.setProperty('--primary-foreground', 'oklch(1 0 0)');

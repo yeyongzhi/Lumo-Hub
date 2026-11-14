@@ -12,13 +12,16 @@ interface Props extends PrimitiveProps {
   variant?: ButtonVariants['variant'];
   size?: ButtonVariants['size'];
   class?: HTMLAttributes['class'];
+  disableTooltip?: boolean;
 }
 
 defineOptions({ inheritAttrs: false });
 const attrs = useAttrs();
 const tooltip = () => String(attrs.title || attrs['aria-label'] || '');
 const showTooltip = () =>
-  Boolean(tooltip()) && (props.size?.startsWith('icon') || Boolean(attrs.title));
+  !props.disableTooltip &&
+  Boolean(tooltip()) &&
+  (props.size?.startsWith('icon') || Boolean(attrs.title));
 const buttonAttrs = () => {
   const { title, ...rest } = attrs;
   return rest;

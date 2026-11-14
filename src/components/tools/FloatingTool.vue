@@ -3,8 +3,9 @@ import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Textarea } from '@/components/ui/textarea';
 import { readLocal, writeLocal } from '@/lib/local-files';
+import { useToastMessage } from '@/lib/toast-message';
 const text = ref(''),
-  error = ref(''),
+  error = useToastMessage(),
   ready = ref(false);
 let timer: ReturnType<typeof setTimeout> | undefined, removeClose: (() => void) | undefined;
 let queue = Promise.resolve();
@@ -80,6 +81,5 @@ onUnmounted(() => {
       class="field-sizing-fixed min-h-0 flex-1 resize-none border-0 bg-transparent leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent"
       aria-label="悬浮文本"
     />
-    <p v-if="error" role="alert" class="text-xs break-words text-destructive">{{ error }}</p>
   </div>
 </template>
