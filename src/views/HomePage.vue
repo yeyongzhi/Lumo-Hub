@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useHomeLayoutEditor } from '@/lib/use-home-layout-editor';
 import HomeWidgetFrame from '@/components/HomeWidgetFrame.vue';
+import SystemWidget from '@/components/SystemWidget.vue';
+import MetricsWidget from '@/components/MetricsWidget.vue';
+import ClipboardWidget from '@/components/ClipboardWidget.vue';
 import { builtinTools, openTool } from '@/lib/tools';
 import { resourceImage } from '@/lib/library-preferences';
 import {
@@ -23,6 +26,11 @@ import { format } from 'date-fns';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   CloudSun,
+  Cpu,
+  MemoryStick,
+  Clipboard,
+  HardDrive,
+  Network,
   Quote,
   Newspaper,
   Flower2,
@@ -79,7 +87,6 @@ import {
   widgetSizes,
   homeGridProfileForWidth,
   homeGridCellCount,
-  homeGridTrack,
   homeGridTracksPerCell,
   homeWidgetSizeLabel,
 } from '@/lib/home-layout';
@@ -114,7 +121,6 @@ const {
   changeLayout,
   removeWidget,
   beginEdit: beginLayoutEdit,
-  cancelEdit: cancelLayoutEdit,
 } = useHomeLayoutEditor(store.settings.home_layout);
 type SavedHomeTemplate = { id: string; name: string; widgets: HomeWidget[] };
 const layoutTemplatesKey = 'lumo-home-layout-templates';
@@ -502,6 +508,12 @@ const moduleIcons = {
   library: Grid2X2,
   quick_launch: Rocket,
   quick_tools: Wrench,
+  clipboard: Clipboard,
+  disk: HardDrive,
+  cpu: Cpu,
+  network: Network,
+  hardware: Cpu,
+  memory: MemoryStick,
   calendar: CalendarDays,
   time: Clock3,
 };
@@ -547,12 +559,6 @@ function addSelectedModules() {
   widgets.value.push({ ...createModule(selectedModule.value), size: previewSize.value });
   showModules.value = false;
 }
-function cancelEdit() {
-  cancelDrag();
-  cancelLayoutEdit(store.settings.home_layout);
-  showModules.value = false;
-  if (props.settingsMode) beginEdit();
-}
 function createModule(kind: HomeWidgetKind): HomeWidget {
   return {
     id: crypto.randomUUID(),
@@ -561,7 +567,18 @@ function createModule(kind: HomeWidgetKind): HomeWidget {
       ? '1x1'
       : ['news', 'calendar'].includes(kind)
         ? '2x2'
-        : ['recent', 'library', 'quick_launch', 'quick_tools'].includes(kind) || isOnline(kind)
+        : [
+              'recent',
+              'library',
+              'quick_launch',
+              'quick_tools',
+              'hardware',
+              'memory',
+              'clipboard',
+              'disk',
+              'cpu',
+              'network',
+            ].includes(kind) || isOnline(kind)
           ? '2x1'
           : '1x1',
   };
@@ -1114,9 +1131,8 @@ async function saveLayout() {
         tag="div"
         data-home-grid
         move-class="transition-transform duration-150 ease-out motion-reduce:transition-none"
-        class="grid shrink-0 grid-cols-[repeat(var(--home-grid-columns,24),var(--home-grid-track))] auto-cols-[var(--home-grid-track)] auto-rows-[var(--home-grid-cell)] content-start gap-[var(--home-grid-gap)]"
+        class="grid shrink-0 grid-cols-[repeat(var(--home-grid-columns,24),minmax(0,1fr))] auto-rows-[var(--home-grid-cell)] content-start gap-[var(--home-grid-gap)]"
         :style="{
-          '--home-grid-track': `${homeGridTrack(gridProfile)}px`,
           '--home-grid-cell': `${gridProfile.cell}px`,
           '--home-grid-gap': `${gridProfile.gap}px`,
         }"
@@ -1127,9 +1143,7 @@ async function saveLayout() {
           :data-widget-id="widget.id"
           :class="[
             props.previewWidget ? previewWidgetClasses[widget.size] : widgetClasses[widget.size],
-            draggedId === widget.id
-              ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-              : '',
+            draggedId === widget.id ? 'ring-2 ring-inset ring-primary' : '',
           ]"
         >
           <div
@@ -1220,7 +1234,7 @@ async function saveLayout() {
                     :model-value="widget.size"
                     @update:model-value="(value) => resize(widget, value as HomeWidgetSize)"
                     ><DropdownMenuRadioItem v-for="size in widgetSizes" :key="size" :value="size">{{
-                      size === '4x1' ? '4 × 1 · 宽度自适应' : homeWidgetSizeLabel(size, gridProfile)
+                      `${size.replace('x', ' × ')} · 宽度自适应`
                     }}</DropdownMenuRadioItem></DropdownMenuRadioGroup
                   ></DropdownMenuContent
                 >
@@ -1347,8 +1361,19 @@ async function saveLayout() {
             :inert="editing"
           >
             <div class="flex h-full min-h-0 flex-col gap-2 overflow-y-auto">
+              <ClipboardWidget v-if="widget.kind === 'clipboard'" />
+              <MetricsWidget
+                v-else-if="
+                  widget.kind === 'disk' || widget.kind === 'cpu' || widget.kind === 'network'
+                "
+                :kind="widget.kind"
+              />
+              <SystemWidget
+                v-else-if="widget.kind === 'hardware' || widget.kind === 'memory'"
+                :kind="widget.kind"
+              />
               <HomeFeed
-                v-if="isOnline(widget.kind)"
+                v-else-if="isOnline(widget.kind)"
                 :kind="widget.kind"
                 :size="widget.size"
                 :refresh-key="refreshKeys[widget.kind]"
@@ -1700,7 +1725,7 @@ async function saveLayout() {
     </div>
     <div
       v-if="editing"
-      class="z-30 flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-background py-3"
+      class="z-30 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-1 py-3"
     >
       <div class="flex flex-wrap items-center gap-2">
         <Button variant="outline" :disabled="saving" @click="openModules"
@@ -1722,9 +1747,7 @@ async function saveLayout() {
         >
       </div>
       <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
-        <span class="text-xs text-muted-foreground">离开时自动保存，可在离开前取消修改</span>
-        <Button variant="ghost" :disabled="saving" @click="cancelEdit">取消修改</Button
-        ><Button :disabled="saving" @click="saveLayout">{{
+        <Button :disabled="saving" @click="saveLayout">{{
           saving ? '保存中…' : '保存布局'
         }}</Button>
       </div>

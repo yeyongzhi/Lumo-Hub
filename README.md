@@ -8,9 +8,9 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 [产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
-> 当前代码版本：**0.0.1-beta.10（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.11（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
 
-[beta.10 测试版发布入口](https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v0.0.1-beta.10) · [查看全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
+[查看最新测试版及全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
 ## 一个工作台，容纳常用日常
 
@@ -20,7 +20,7 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 ### 按自己的习惯整理首页
 
-添加或排列首页卡片，将时间、日历、应用库、快捷启动、便签、笔记、倒数日、天气和每日内容放在需要的位置。可选择预设布局、保存个人布局，并使用亮色或暗色主题。
+添加或排列首页卡片，将时间、日历、应用库、快捷启动、便签、笔记、倒数日、天气、每日内容以及硬件、内存、磁盘、CPU、网络和剪贴板状态放在需要的位置。可选择预设布局、保存个人布局，并使用亮色或暗色主题。
 
 ### 记录灵感与重要日期
 

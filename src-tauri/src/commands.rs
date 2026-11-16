@@ -320,7 +320,7 @@ pub fn set_setting(
             let mut kinds = std::collections::HashSet::new();
             if layout.len() > 14 || layout.iter().any(|widget|
                 widget.id.is_empty() || widget.id.len() > 80 || !ids.insert(widget.id.clone()) || !kinds.insert(widget.kind.clone())
-                || !["clock", "countdowns", "sticky", "note", "recent", "weather", "hitokoto", "news", "poetry", "library", "quick_launch", "quick_tools", "calendar", "time"].contains(&widget.kind.as_str())
+                || !["clock", "countdowns", "sticky", "note", "recent", "weather", "hitokoto", "news", "poetry", "library", "quick_launch", "quick_tools", "calendar", "time", "hardware", "memory", "clipboard", "disk", "cpu", "network"].contains(&widget.kind.as_str())
                 || !["1x1", "2x1", "1x2", "2x2", "4x1"].contains(&widget.size.as_str()) || widget.selected_ids.len() > 100 || widget.selected_ids.iter().any(|id| id.len()>80) || (["sticky", "note"].contains(&widget.kind.as_str()) && widget.selected_ids.len()>2)) {
                 return Err("首页模块或布局尺寸无效".into());
             }

@@ -1,3 +1,4 @@
+import defaultAppearance from '@/lib/default-appearance.json';
 import { migrateLegacyStorage, writeLocal } from '@/lib/local-files';
 import { normalizeNoteTags } from '@/lib/note-tags';
 import { defineStore } from 'pinia';
@@ -26,11 +27,10 @@ const defaults: AppSettings = {
     note_tags: {},
     tag_catalog: [],
   },
-  theme_mode: 'system',
-  appearance_mode: 'glass',
-  accent: 'blue',
-  font_size: 14,
-  border_radius: 16,
+  ...(defaultAppearance as Pick<
+    AppSettings,
+    'theme_mode' | 'appearance_mode' | 'accent' | 'font_size' | 'border_radius'
+  >),
   sidebar_width: 240,
   common_launchers: [
     'computer',

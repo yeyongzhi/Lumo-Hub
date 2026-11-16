@@ -273,10 +273,7 @@ async function removeInvalid() {
             <p v-if="!invalid.length" class="text-sm text-muted-foreground">没有发现失效入口。</p>
             <div class="mt-3 flex gap-2">
               <Button variant="outline" :disabled="busy" @click="emit('refresh')">重新检查</Button
-              ><Button
-                variant="destructive"
-                :disabled="busy || !invalid.length"
-                @click="removeInvalid"
+              ><Button variant="danger" :disabled="busy || !invalid.length" @click="removeInvalid"
                 >移除失效入口</Button
               >
             </div>

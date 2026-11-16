@@ -41,7 +41,9 @@ const open = defineModel<boolean>('open');
       <AlertDialogFooter>
         <AlertDialogCancel>取消</AlertDialogCancel>
         <AlertDialogAction
-          :class="destructive ? buttonVariants({ variant: 'destructive' }) : undefined"
+          :class="
+            destructive ? [buttonVariants({ variant: 'danger' }), 'bg-transparent'] : undefined
+          "
           @click="emit('confirm')"
           >{{ confirmText }}</AlertDialogAction
         >

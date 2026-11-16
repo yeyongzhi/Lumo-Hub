@@ -1,3 +1,5 @@
+mod home_metrics;
+mod system_overview;
 mod builtin_tools;
 mod library_tools;
 mod local_files;
@@ -118,6 +120,7 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 shortcut_error: Mutex::new(None), shortcut_capture: Mutex::new(None), backup_error: Mutex::new(None),
             });
+            app.manage(home_metrics::MetricsState::default());
             builtin_tools::start(app.handle().clone());
             desktop::setup(app.handle()).map_err(std::io::Error::other)?;
             reminders::start(app.handle().clone());
@@ -134,9 +137,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            system_overview::system_overview, home_metrics::home_metrics, home_metrics::open_home_disk, home_metrics::open_network_settings,
             builtin_tools::save_tool_png, builtin_tools::open_builtin_tool, builtin_tools::notify_timer_finished, builtin_tools::clipboard_history, builtin_tools::clipboard_pause, builtin_tools::clipboard_delete, builtin_tools::clipboard_copy,
             local_files::read_local,local_files::write_local,desktop::close_main, desktop::export_markdown,
-            search::search_resources, updates::check_app_update,
+            search::search_resources, updates::check_app_update, updates::get_release_notes,
             recycle::list_trash, recycle::restore_trash, recycle::purge_trash,
             launcher::show_launcher, launcher::hide_launcher, launcher::open_startup_view, launcher::open_main_page, launcher::configure_launcher, launcher::set_shortcut_capture, launcher::launcher_status,
             automatic_backup::run_auto_backup, automatic_backup::auto_backup_status,

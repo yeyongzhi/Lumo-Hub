@@ -35,7 +35,8 @@ pub async fn open_builtin_tool(app: tauri::AppHandle, id: String) -> Result<(), 
         .min_inner_size(width, height)
         .decorations(false)
         .transparent(true)
-        .shadow(!floating)
+        .background_color(tauri::webview::Color(0, 0, 0, 0))
+        .shadow(false)
         .always_on_top(floating)
         .build()
         .map_err(|e| e.to_string())?;

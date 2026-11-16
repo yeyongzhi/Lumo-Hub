@@ -59,15 +59,26 @@ fn default_home_layout() -> Vec<HomeWidget> {
         .into_iter().map(|(kind, size)| HomeWidget { id: kind.into(), kind: kind.into(), size: size.into(), selected_ids: vec![] }).collect()
 }
 
+#[derive(Deserialize)]
+struct DefaultAppearance {
+    theme_mode: String,
+    appearance_mode: String,
+    accent: String,
+    font_size: u8,
+    border_radius: u8,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
+        let appearance: DefaultAppearance = serde_json::from_str(include_str!("../../src/lib/default-appearance.json"))
+            .expect("default appearance configuration must be valid");
         Self {
             client:Default::default(),product: ProductSettings::default(),
-            theme_mode: "system".into(),
-            appearance_mode: default_appearance_mode(),
-            accent: "blue".into(),
-            font_size: 14,
-            border_radius: default_border_radius(),
+            theme_mode: appearance.theme_mode,
+            appearance_mode: appearance.appearance_mode,
+            accent: appearance.accent,
+            font_size: appearance.font_size,
+            border_radius: appearance.border_radius,
             sidebar_width: default_sidebar_width(),
             common_launchers: default_common_launchers(),
             welcome_completed: false,

@@ -83,8 +83,7 @@ onUnmounted(() => {
 </script>
 <template>
   <div
-    class="tool-window flex h-dvh min-w-0 flex-col overflow-hidden bg-background text-foreground"
-    :class="{ border: floating }"
+    class="tool-window flex h-dvh min-w-0 flex-col overflow-hidden border border-border bg-background text-foreground"
   >
     <header class="flex h-14 shrink-0 items-center gap-3 border-b px-4" @mousedown="drag">
       <component :is="tool.icon" class="size-5 text-primary" />

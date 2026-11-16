@@ -39,7 +39,6 @@ import {
   Ellipsis,
   LayoutGrid,
   AppWindow,
-  ArrowUpRight,
   FileText,
   Folder,
   FolderCog,
@@ -881,6 +880,7 @@ watch(
   { immediate: true },
 );
 const shownResources = computed(() => {
+  const matches = new Set(matchingIds.value);
   const list = store.resources.filter(
     (r) =>
       (activeFilter.value === 'all' ||
@@ -888,7 +888,7 @@ const shownResources = computed(() => {
         activeFilter.value === r.kind ||
         (activeFilter.value === 'favorites' && r.is_favorite) ||
         activeFilter.value === `group:${r.group_id}`) &&
-      (!query.value.trim() || matchingIds.value.includes(r.id)),
+      (!query.value.trim() || matches.has(r.id)),
   );
   const sorted = list.sort((a, b) =>
     query.value.trim()
@@ -923,6 +923,7 @@ const batchMode = ref(false),
   selectedIds = ref<string[]>([]),
   batchBusy = ref(false),
   deleteBatch = ref(false);
+const selectedIdSet = computed(() => new Set(selectedIds.value));
 watch([activeFilter, query, displayMode, density, batchMode], () => cancelResourceDrag());
 watch([activeFilter, query], () => {
   selectedIds.value = [];
@@ -1690,12 +1691,16 @@ function iconFor(kind: ResourceKind) {
         ><ScrollArea class="library-scroll min-h-0 w-full flex-1" aria-label="应用库启动项"
           ><div class="flex min-h-full min-w-0 flex-1 flex-col gap-4 pr-3 pb-3">
             <h2
-              v-if="shownCommon.length && activeFilter === 'all'"
+              v-if="!batchMode && shownCommon.length && activeFilter === 'all'"
               class="text-xs font-medium text-muted-foreground"
             >
               系统启动项 · {{ shownCommon.length }}
             </h2>
-            <div v-if="shownCommon.length" :class="launcherLayout" aria-label="系统启动项">
+            <div
+              v-if="!batchMode && shownCommon.length"
+              :class="launcherLayout"
+              aria-label="系统启动项"
+            >
               <Button
                 v-for="(item, index) in shownCommon"
                 :key="item.id"
@@ -1733,12 +1738,12 @@ function iconFor(kind: ResourceKind) {
             </div>
             <div
               v-if="batchMode && activeFilter !== 'common'"
-              class="flex flex-wrap items-center gap-3 rounded-xl bg-muted p-3"
+              class="flex flex-wrap items-center gap-3 border-b border-border pb-3"
             >
               <Checkbox
                 :model-value="
                   shownResources.length > 0 &&
-                  shownResources.every((item) => selectedIds.includes(item.id))
+                  shownResources.every((item) => selectedIdSet.has(item.id))
                 "
                 aria-label="选择当前结果"
                 @update:model-value="
@@ -1776,15 +1781,26 @@ function iconFor(kind: ResourceKind) {
                 @click="batch('unfavorite')"
                 >取消收藏</Button
               ><Button
-                variant="destructive"
+                variant="danger"
                 size="sm"
                 :disabled="!selectedIds.length || batchBusy"
                 @click="deleteBatch = true"
                 >移除所选</Button
+              ><Button
+                class="ml-auto"
+                size="sm"
+                :disabled="batchBusy"
+                @click="
+                  batchMode = false;
+                  selectedIds = [];
+                "
+                >保存并退出</Button
               >
             </div>
             <h2
-              v-if="shownCommon.length && shownResources.length && activeFilter === 'all'"
+              v-if="
+                !batchMode && shownCommon.length && shownResources.length && activeFilter === 'all'
+              "
               class="text-xs font-medium text-muted-foreground"
             >
               我的启动项 · {{ shownResources.length }}
@@ -1804,6 +1820,11 @@ function iconFor(kind: ResourceKind) {
                 ><ContextMenuTrigger as-child
                   ><div
                     class="group relative min-w-0 rounded-2xl"
+                    :style="
+                      batchMode
+                        ? { contentVisibility: 'auto', containIntrinsicSize: 'auto 120px' }
+                        : undefined
+                    "
                     :class="
                       tileDrop === item.id
                         ? 'ring-2 ring-primary'
@@ -1893,7 +1914,7 @@ function iconFor(kind: ResourceKind) {
                       <div class="flex min-w-0 items-start gap-3">
                         <Checkbox
                           v-if="batchMode"
-                          :model-value="selectedIds.includes(item.id)"
+                          :model-value="selectedIdSet.has(item.id)"
                           :aria-label="`选择 ${item.name}`"
                           @update:model-value="toggleSelection(item.id)"
                         />
@@ -1932,21 +1953,19 @@ function iconFor(kind: ResourceKind) {
                         }}</Badge
                         ><span class="flex gap-1"
                           ><Button
-                            v-if="item.kind !== 'web'"
                             variant="ghost"
-                            size="sm"
-                            @click="relocate(item)"
-                            >重新定位</Button
-                          ><Button variant="ghost" size="icon" aria-label="编辑" @click="edit(item)"
+                            size="icon-sm"
+                            :aria-label="`编辑 ${item.name}`"
+                            :title="`编辑 ${item.name}`"
+                            @click="edit(item)"
                             ><Pencil /></Button
                           ><Button
                             variant="danger"
-                            size="icon"
-                            aria-label="删除"
+                            size="icon-sm"
+                            :aria-label="`删除 ${item.name}`"
+                            :title="`删除 ${item.name}`"
                             @click="remove(item)"
                             ><Trash2 /></Button
-                          ><Button variant="outline" size="sm" @click="launch(item)"
-                            >打开<ArrowUpRight data-icon="inline-end" /></Button
                         ></span>
                       </div> </Card
                     ><template v-if="!batchMode"

@@ -113,7 +113,7 @@ onUnmounted(() => unlisten?.());
               >{{ entry.kind === 'image' ? '图片' : '文本' }} ·
               {{ new Date(entry.created).toLocaleString() }}</span
             ><Button size="sm" variant="outline" @click="copy(entry.id)">复制</Button
-            ><Button size="sm" variant="ghost" @click="remove(entry.id)">删除</Button>
+            ><Button size="sm" variant="danger" @click="remove(entry.id)">删除</Button>
           </div>
           <img
             v-if="entry.kind === 'image'"

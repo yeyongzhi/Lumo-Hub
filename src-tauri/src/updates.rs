@@ -82,6 +82,25 @@ pub async fn check_app_update(webview: tauri::Webview) -> Result<Option<Value>, 
     Ok(Some(metadata))
 }
 
+#[tauri::command]
+pub async fn get_release_notes(version: String) -> Result<String, String> {
+    let parsed = semver::Version::parse(version.trim_start_matches('v'))
+        .map_err(|_| "版本号无效".to_string())?;
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("Lumo-Hub/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(15)).build().map_err(|e| e.to_string())?;
+    for tag in [format!("v{parsed}"), parsed.to_string()] {
+        let mut endpoint = url::Url::parse("https://api.github.com/repos/yeyongzhi/Lumo-Hub/releases/tags/").unwrap();
+        endpoint.path_segments_mut().unwrap().pop_if_empty().push(&tag);
+        let response = client.get(endpoint).send().await.map_err(|e| format!("无法读取发布说明：{e}"))?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND { continue; }
+        let release: Value = response.error_for_status().map_err(|e| format!("无法读取发布说明：{e}"))?
+            .json().await.map_err(|e| format!("发布说明格式无效：{e}"))?;
+        return Ok(release.get("body").and_then(Value::as_str).unwrap_or("").to_owned());
+    }
+    Err("未找到对应版本的 GitHub Release".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

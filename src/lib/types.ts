@@ -74,6 +74,12 @@ export type HomeWidgetKind =
   | 'library'
   | 'quick_launch'
   | 'quick_tools'
+  | 'clipboard'
+  | 'disk'
+  | 'cpu'
+  | 'network'
+  | 'hardware'
+  | 'memory'
   | 'calendar'
   | 'time';
 export type HomeWidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '4x1';

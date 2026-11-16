@@ -4,6 +4,7 @@ import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from '@/componen
 
 import { computed, onMounted, onUnmounted, nextTick, reactive, ref, watch } from 'vue';
 import {
+  ArrowLeft,
   CalendarDays,
   Pencil,
   Plus,
@@ -49,6 +50,8 @@ import type { Countdown } from '@/lib/types';
 
 const store = useWorkspaceStore();
 const editingId = ref('');
+const detailId = ref('');
+const detail = computed(() => store.countdowns.find((item) => item.id === detailId.value));
 const showForm = ref(false),
   formSaving = ref(false);
 const now = useCurrentDay();
@@ -130,10 +133,7 @@ watch(
       query.value = '';
       startDate.value = '';
       endDate.value = '';
-      await nextTick();
-      document
-        .getElementById(`countdown-${target.id}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      detailId.value = target.id;
       store.searchTarget = null;
     }
   },
@@ -215,6 +215,7 @@ onMounted(() => window.addEventListener('lumo-new', addDate));
 onUnmounted(() => window.removeEventListener('lumo-new', addDate));
 function addDate() {
   if (formSaving.value) return;
+  detailId.value = '';
   resetForm();
   showForm.value = true;
 }
@@ -246,7 +247,11 @@ async function removeSelected() {
 
 <template>
   <div class="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
-    <div class="flex shrink-0 flex-wrap items-center gap-3" aria-label="倒数日筛选与操作">
+    <div
+      v-if="!detailId"
+      class="flex shrink-0 flex-wrap items-center gap-3"
+      aria-label="倒数日筛选与操作"
+    >
       <div class="flex min-w-40 flex-1 items-center gap-3">
         <Input
           v-model="query"
@@ -326,7 +331,7 @@ async function removeSelected() {
     </div>
     <p v-if="invalidRange" class="shrink-0 text-sm text-destructive">开始日期不能晚于结束日期。</p>
     <div
-      v-if="batchMode && !showForm"
+      v-if="batchMode && !showForm && !detailId"
       class="flex shrink-0 items-center gap-3 rounded-xl bg-muted p-3"
     >
       <Checkbox
@@ -338,7 +343,7 @@ async function removeSelected() {
         "
       /><span class="flex-1 text-sm">已选择 {{ selectedIds.length }} 项</span
       ><Button
-        variant="destructive"
+        variant="danger"
         size="sm"
         :disabled="!selectedIds.length || batchBusy"
         @click="deleteBatch = true"
@@ -349,7 +354,7 @@ async function removeSelected() {
     </div>
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea
-        v-if="entries.length || showForm"
+        v-if="entries.length || showForm || detail"
         class="absolute inset-0 h-full w-full"
         aria-label="倒数日内容"
         ><div class="flex min-w-0 flex-col gap-5 pr-3 pb-3">
@@ -457,6 +462,64 @@ async function removeSelected() {
               </div>
             </FieldGroup>
           </Card>
+          <div v-else-if="detail" class="flex flex-col gap-5">
+            <div class="flex items-center justify-between gap-3">
+              <Button variant="ghost" @click="detailId = ''"
+                ><ArrowLeft data-icon="inline-start" />返回倒数日</Button
+              >
+              <Button variant="outline" @click="edit(detail)"
+                ><Pencil data-icon="inline-start" />编辑</Button
+              >
+            </div>
+            <Card class="gap-6 p-6 sm:p-8">
+              <div class="flex items-center gap-3">
+                <CalendarDays class="size-6 text-primary" />
+                <h1 class="text-2xl font-semibold">{{ detail.title }}</h1>
+              </div>
+              <div class="rounded-xl bg-muted/40 p-6">
+                <p class="text-sm text-muted-foreground">距离目标日</p>
+                <p class="mt-2 text-3xl font-semibold tabular-nums text-primary">
+                  {{ countdownStatus(detail, now).text }}
+                </p>
+                <p class="mt-2 text-sm text-muted-foreground">
+                  {{ format(countdownTarget(detail, now), 'yyyy-MM-dd')
+                  }}{{ detail.repeat_type === 'yearly' ? ' · 下一次日期' : '' }}
+                </p>
+              </div>
+              <dl class="grid gap-5 text-sm sm:grid-cols-2">
+                <div>
+                  <dt class="text-muted-foreground">
+                    {{ detail.repeat_type === 'yearly' ? '原始日期' : '目标日期' }}
+                  </dt>
+                  <dd class="mt-1 font-medium">{{ detail.target_date }}</dd>
+                </div>
+                <div>
+                  <dt class="text-muted-foreground">重复方式</dt>
+                  <dd class="mt-1 font-medium">
+                    {{ detail.repeat_type === 'yearly' ? '每年重复' : '一次性日期' }}
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-muted-foreground">提醒</dt>
+                  <dd class="mt-1 font-medium">
+                    {{
+                      (store.settings.product.reminders[detail.id] || []).length
+                        ? (store.settings.product.reminders[detail.id] || [])
+                            .map((day) => (day === 0 ? '当天' : `提前 ${day} 天`))
+                            .join('、')
+                        : '未设置'
+                    }}
+                  </dd>
+                </div>
+                <div class="sm:col-span-2">
+                  <dt class="text-muted-foreground">说明</dt>
+                  <dd class="mt-1 whitespace-pre-wrap break-words">
+                    {{ detail.description || '暂无说明' }}
+                  </dd>
+                </div>
+              </dl>
+            </Card>
+          </div>
           <div
             v-else-if="entries.length"
             :class="
@@ -470,6 +533,12 @@ async function removeSelected() {
               :id="'countdown-' + item.id"
               :key="item.id"
               class="flex min-w-0 p-5"
+              :role="batchMode ? undefined : 'button'"
+              :tabindex="batchMode ? undefined : 0"
+              :aria-label="batchMode ? undefined : `查看 ${item.title} 详情`"
+              @click="!batchMode && (detailId = item.id)"
+              @keydown.enter.prevent="!batchMode && (detailId = item.id)"
+              @keydown.space.prevent="!batchMode && (detailId = item.id)"
               :class="
                 displayMode === 'grid'
                   ? 'min-h-48 flex-col justify-between'

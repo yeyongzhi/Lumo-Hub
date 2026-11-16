@@ -13,6 +13,12 @@ export const widgetNames: Record<HomeWidgetKind, string> = {
   library: '应用库',
   quick_launch: '快捷启动',
   quick_tools: '快捷工具',
+  clipboard: '剪贴板历史',
+  disk: '磁盘空间',
+  cpu: 'CPU 状态',
+  network: '网络状态',
+  hardware: '电脑硬件',
+  memory: '内存占用',
   calendar: '日历',
   time: '时间',
 };

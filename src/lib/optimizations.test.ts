@@ -127,7 +127,7 @@ it('migrates legacy tag catalogs without losing note assignments', () => {
   expect(migrated.tag_catalog).toEqual(['现有', '未使用', '工作']);
   expect(original.note_tags.__tag_catalog__0).toBeDefined();
 });
-it('restores canceled layout edits and keeps snapshots independent', () => {
+it('keeps layout snapshots independent when editing', () => {
   const initial = [
     { id: 'clock', kind: 'clock' as const, size: '2x2' as const, selected_ids: ['one'] },
   ];
@@ -137,7 +137,6 @@ it('restores canceled layout edits and keeps snapshots independent', () => {
   e.widgets.value[0].selected_ids!.push('two');
   expect(e.layoutUndo.value[0][0].selected_ids).toEqual(['one']);
   e.removeWidget('clock');
-  e.cancelEdit(initial);
-  expect(e.widgets.value).toEqual(initial);
-  expect(e.editing.value).toBe(false);
+  expect(e.widgets.value).toEqual([]);
+  expect(e.layoutUndo.value[0][0].selected_ids).toEqual(['one']);
 });

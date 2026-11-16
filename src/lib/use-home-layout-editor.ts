@@ -22,10 +22,6 @@ export function useHomeLayoutEditor(initial: HomeWidget[]) {
     widgets.value = layout.map(normalizeHomeWidget);
     editing.value = true;
   }
-  function cancelEdit(layout: HomeWidget[]) {
-    widgets.value = layout.map(normalizeHomeWidget);
-    editing.value = false;
-  }
   return {
     widgets,
     editing,
@@ -34,6 +30,5 @@ export function useHomeLayoutEditor(initial: HomeWidget[]) {
     changeLayout,
     removeWidget,
     beginEdit,
-    cancelEdit,
   };
 }

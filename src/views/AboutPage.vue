@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { askConfirmation } from '@/lib/confirm';
-import { onMounted, onUnmounted, shallowRef, ref } from 'vue';
+import { computed, onMounted, onUnmounted, shallowRef, ref } from 'vue';
+import MarkdownIt from 'markdown-it';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -27,6 +28,32 @@ const installing = ref(false);
 const progress = ref(0);
 const updateAvailable = shallowRef<Update | null>(null);
 const status = ref('');
+const releaseNotes = ref('');
+const releaseNotesLoading = ref(false);
+const releaseNotesError = ref(false);
+const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
+const renderedNotes = computed(() => markdown.render(releaseNotes.value));
+async function openReleaseLink(event: MouseEvent) {
+  const link = (event.target as HTMLElement).closest('a');
+  if (!link) return;
+  event.preventDefault();
+  try {
+    const url = new URL(link.getAttribute('href') || '', 'https://github.com/yeyongzhi/Lumo-Hub/');
+    if (url.protocol === 'https:' || url.protocol === 'http:') await openUrl(url.href);
+  } catch (error) {
+    store.notify(`无法打开链接：${String(error)}`);
+  }
+}
+async function openRelease() {
+  if (!updateAvailable.value) return;
+  try {
+    await openUrl(
+      `https://github.com/yeyongzhi/Lumo-Hub/releases/tag/v${encodeURIComponent(updateAvailable.value.version)}`,
+    );
+  } catch (error) {
+    store.notify(`无法打开发布页面：${String(error)}`);
+  }
+}
 async function openChangelog() {
   try {
     await openUrl('https://yeyongzhi.github.io/Lumo-Hub/changelog');
@@ -55,6 +82,8 @@ async function checkUpdate() {
   try {
     await updateAvailable.value?.close();
     updateAvailable.value = null;
+    releaseNotes.value = '';
+    releaseNotesError.value = false;
     const metadata = await invoke<ConstructorParameters<typeof Update>[0] | null>(
       'check_app_update',
     );
@@ -62,6 +91,20 @@ async function checkUpdate() {
     status.value = updateAvailable.value
       ? `发现新版本 ${updateAvailable.value.version}`
       : '当前已是最新版本。';
+    if (updateAvailable.value) {
+      releaseNotes.value =
+        updateAvailable.value.body || String(updateAvailable.value.rawJson?.notes || '');
+      releaseNotesLoading.value = true;
+      try {
+        releaseNotes.value = await invoke<string>('get_release_notes', {
+          version: updateAvailable.value.version,
+        });
+      } catch {
+        releaseNotesError.value = true;
+      } finally {
+        releaseNotesLoading.value = false;
+      }
+    }
   } catch (error) {
     status.value = /404|not found/i.test(String(error))
       ? '当前发布源尚未提供更新清单，请稍后重试。'
@@ -147,14 +190,58 @@ defineExpose({ checkUpdate });
     <p v-if="status" class="max-w-xl text-sm text-muted-foreground">{{ status }}</p>
     <div
       v-if="updateAvailable"
-      class="w-full max-w-xl rounded-2xl border border-border bg-muted/50 p-4 text-left"
+      class="w-full max-w-3xl rounded-2xl border border-border bg-muted/50 p-5 text-left"
     >
       <div class="flex items-center gap-2 font-medium">
         <ShieldCheck class="size-4 text-primary" />版本 {{ updateAvailable.version }}
       </div>
-      <p class="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
-        {{ updateAvailable.body || updateAvailable.rawJson?.notes || '此版本没有附带更新说明。' }}
-      </p>
+      <p class="mt-1 text-xs text-muted-foreground">GitHub Release 更新内容</p>
+      <p v-if="releaseNotesLoading" class="mt-4 text-sm text-muted-foreground">正在读取更新内容…</p>
+      <template v-else>
+        <p v-if="releaseNotesError" class="mt-4 text-sm text-muted-foreground">
+          无法读取 GitHub Release，以下显示更新清单中的说明。
+        </p>
+        <div
+          v-if="releaseNotes"
+          class="release-notes mt-4 break-words text-sm leading-6"
+          @click="openReleaseLink"
+          v-html="renderedNotes"
+        />
+        <p v-else class="mt-4 text-sm text-muted-foreground">此版本没有附带更新说明。</p>
+        <Button variant="link" class="mt-3 h-auto p-0" @click="openRelease"
+          ><ExternalLink data-icon="inline-start" />查看 GitHub Release</Button
+        >
+      </template>
     </div>
   </div>
 </template>
+
+<style scoped>
+.release-notes :deep(h1),
+.release-notes :deep(h2),
+.release-notes :deep(h3) {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+}
+.release-notes :deep(p),
+.release-notes :deep(ul),
+.release-notes :deep(ol) {
+  margin: 0.5rem 0;
+}
+.release-notes :deep(ul) {
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+.release-notes :deep(ol) {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+.release-notes :deep(a) {
+  color: var(--primary);
+  text-decoration: underline;
+}
+.release-notes :deep(pre) {
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+</style>
