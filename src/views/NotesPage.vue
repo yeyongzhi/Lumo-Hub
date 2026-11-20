@@ -5,7 +5,6 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { computed, ref, watch } from 'vue';
 import {
   BookOpenText,
-  FilePlus2,
   Pencil,
   Search,
   Trash2,
@@ -15,7 +14,10 @@ import {
   Plus,
   Tags,
   Ellipsis,
+  Info,
 } from '@lucide/vue';
+import RecordDetailsDialog from '@/components/RecordDetailsDialog.vue';
+import type { Note } from '@/lib/types';
 import { save } from '@tauri-apps/plugin-dialog';
 import {
   Select,
@@ -53,6 +55,7 @@ import { api } from '@/lib/api';
 import { useWorkspaceStore } from '@/stores/workspace';
 
 const store = useWorkspaceStore();
+const details = ref<Note | null>(null);
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const baseLinkOpen = md.renderer.rules.link_open;
 md.renderer.rules.link_open = (tokens, index, options, env, self) => {
@@ -336,7 +339,7 @@ async function openMarkdownLink(event: MouseEvent) {
   <div class="grid h-full min-h-0 flex-1 grid-cols-[17rem_minmax(0,1fr)] gap-5">
     <Card class="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
       <div class="shrink-0 px-1">
-        <p class="text-base font-semibold">我的笔记 · {{ store.notes.length }}</p>
+        <p class="text-base font-semibold">我的笔记 · 共 {{ store.notes.length }} 条记录</p>
         <p class="mt-1 text-xs text-muted-foreground">适合长期整理：支持 Markdown、标签与导出。</p>
       </div>
       <div
@@ -368,7 +371,7 @@ async function openMarkdownLink(event: MouseEvent) {
           title="新建笔记"
           :disabled="creating"
           @click="create"
-          ><FilePlus2
+          ><Plus
         /></Button>
       </div>
       <div class="flex shrink-0 items-center gap-2">
@@ -412,6 +415,7 @@ async function openMarkdownLink(event: MouseEvent) {
             ></ContextMenuTrigger
           ><ContextMenuContent class="w-40"
             ><ContextMenuGroup
+              ><ContextMenuItem @select="details = note"><Info />详情</ContextMenuItem
               ><ContextMenuItem @select="exportNote(note.id)"><FileOutput />导出</ContextMenuItem
               ><ContextMenuItem variant="destructive" @select="askDeleteNote(note.id)"
                 ><Trash2 />删除</ContextMenuItem
@@ -552,6 +556,7 @@ async function openMarkdownLink(event: MouseEvent) {
       <h2 class="font-semibold">{{ filter ? '没有匹配的笔记' : '选择一篇笔记' }}</h2>
       <p class="mt-2 text-sm text-muted-foreground">使用常见 Markdown 语法记录与整理。</p></Card
     >
+    <RecordDetailsDialog :record="details" kind="笔记" @close="details = null" />
     <ConfirmDialog
       v-model:open="deleteNoteOpen"
       title="删除笔记？"

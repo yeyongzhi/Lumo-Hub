@@ -97,8 +97,8 @@ function today() {
 </script>
 
 <template>
-  <div class="grid min-w-0 items-start gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_17rem]">
-    <Card class="min-w-0 gap-5 p-4 shadow-none sm:p-5">
+  <div class="grid min-h-0 min-w-0 flex-1 gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_17rem]">
+    <Card class="min-h-0 min-w-0 gap-4 p-4 shadow-none sm:p-5">
       <div class="flex flex-wrap items-center gap-2">
         <Select v-model="year"
           ><SelectTrigger class="w-28" aria-label="选择年份"
@@ -139,13 +139,17 @@ function today() {
         /></Button>
         <Button class="ml-auto" variant="outline" size="sm" @click="today">今天</Button>
       </div>
-      <div class="relative">
+      <div class="relative min-h-0 flex-1">
         <span
           class="pointer-events-none absolute inset-0 flex items-center justify-center text-[16rem] leading-none font-bold text-muted/60"
           aria-hidden="true"
           >{{ month }}</span
         >
-        <div class="relative grid grid-cols-7 gap-1" role="group" aria-label="月历">
+        <div
+          class="relative grid h-full grid-cols-7 grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-1"
+          role="group"
+          aria-label="月历"
+        >
           <span
             v-for="(weekday, index) in ['日', '一', '二', '三', '四', '五', '六']"
             :key="weekday"
@@ -166,7 +170,7 @@ function today() {
             :disabled="cell.date.getFullYear() < 1900 || cell.date.getFullYear() > 2100"
             :class="
               cn(
-                'relative h-20 min-w-0 flex-col gap-1 px-1 tabular-nums',
+                'relative h-full min-w-0 flex-col gap-1 px-1 tabular-nums',
                 cell.key !== selectedKey && cell.weekend && 'text-destructive',
                 cell.key !== selectedKey &&
                   cell.holiday &&
@@ -211,11 +215,11 @@ function today() {
         休 / 班：内置中国大陆节假日数据；未收录年份不标注调休。
       </p>
     </Card>
-    <Card class="gap-4 p-5 shadow-none" aria-label="所选日期详情" aria-live="polite">
+    <Card class="min-h-0 gap-2 p-4 shadow-none" aria-label="所选日期详情" aria-live="polite">
       <div class="flex flex-col items-center gap-2 text-center">
         <p class="text-sm">{{ selectedKey }} 周{{ solar.getWeekInChinese() }}</p>
         <div
-          class="relative flex size-24 items-center justify-center rounded-2xl bg-primary pt-2 text-5xl font-medium text-primary-foreground"
+          class="relative flex size-20 items-center justify-center rounded-2xl bg-primary pt-2 text-5xl font-medium text-primary-foreground"
         >
           <span class="absolute top-3 left-4 size-1.5 rounded-full bg-primary-foreground" /><span
             class="absolute top-3 right-4 size-1.5 rounded-full bg-primary-foreground"
@@ -250,11 +254,11 @@ function today() {
       <Separator />
       <div class="flex items-start gap-3">
         <Badge class="shrink-0" variant="secondary">宜</Badge>
-        <p class="text-sm leading-6">{{ lunar.getDayYi().join('、') }}</p>
+        <p class="text-sm leading-5">{{ lunar.getDayYi().join('、') }}</p>
       </div>
       <div class="flex items-start gap-3">
         <Badge class="shrink-0" variant="destructive">忌</Badge>
-        <p class="text-sm leading-6">{{ lunar.getDayJi().join('、') }}</p>
+        <p class="text-sm leading-5">{{ lunar.getDayJi().join('、') }}</p>
       </div>
       <Separator />
       <div class="flex items-center gap-3 text-sm">

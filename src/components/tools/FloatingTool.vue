@@ -78,7 +78,7 @@ onUnmounted(() => {
       v-model="text"
       :disabled="!ready || closing"
       placeholder="写下需要一直看见的内容…"
-      class="field-sizing-fixed min-h-0 flex-1 resize-none border-0 bg-transparent leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent"
+      class="field-sizing-fixed min-h-0 flex-1 resize-none rounded-lg bg-transparent leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent"
       aria-label="悬浮文本"
     />
   </div>

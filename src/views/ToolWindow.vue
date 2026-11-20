@@ -35,6 +35,7 @@ const components = {
 };
 const pinned = ref(id === 'floating'),
   error = useToastMessage();
+const clipboardCount = ref(0);
 const removers: (() => void)[] = [];
 let settings: AppSettings | undefined;
 let settingsVersion = 0;
@@ -88,7 +89,10 @@ onUnmounted(() => {
     <header class="flex h-14 shrink-0 items-center gap-3 border-b px-4" @mousedown="drag">
       <component :is="tool.icon" class="size-5 text-primary" />
       <h1 class="min-w-0 flex-1 truncate text-sm font-semibold">
-        {{ tool.title }}
+        {{ tool.title
+        }}<span v-if="tool.id === 'clipboard'" class="ml-2 font-normal text-muted-foreground"
+          >{{ clipboardCount }} 条记录</span
+        >
       </h1>
       <Button
         variant="ghost"
@@ -113,7 +117,14 @@ onUnmounted(() => {
     <component
       :is="components[tool.id]"
       v-if="floating || tool.id === 'clipboard' || tool.id === 'diff'"
+      @count-change="clipboardCount = $event"
     />
+    <div v-else-if="tool.id === 'calendar'" class="flex min-h-0 flex-1 p-5">
+      <CalendarTool />
+    </div>
+    <div v-else-if="tool.id === 'timer'" class="flex min-h-0 flex-1 p-5">
+      <component :is="components.timer" />
+    </div>
     <ScrollArea v-else class="min-h-0 flex-1"
       ><div class="p-5"><component :is="components[tool.id]" /></div
     ></ScrollArea>

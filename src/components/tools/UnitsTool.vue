@@ -44,7 +44,7 @@ function swap() {
 <template>
   <div class="flex flex-col gap-5">
     <Tabs :model-value="category" @update:model-value="changeCategory">
-      <TabsList>
+      <TabsList class="h-auto max-w-full flex-wrap justify-start gap-1">
         <TabsTrigger v-for="(group, id) in unitCategories" :key="id" :value="id">{{
           group.label
         }}</TabsTrigger>
@@ -80,12 +80,11 @@ function swap() {
           </SelectContent>
         </Select>
       </Field>
-    </div>
-    <div class="grid grid-cols-2 gap-3">
       <Field>
         <FieldLabel for="unit-amount">数值</FieldLabel>
         <Input id="unit-amount" v-model="amount" type="number" step="any" placeholder="输入数值" />
       </Field>
+      <div aria-hidden="true" />
       <Field>
         <FieldLabel for="unit-result">换算结果</FieldLabel>
         <Input id="unit-result" :model-value="result" readonly />

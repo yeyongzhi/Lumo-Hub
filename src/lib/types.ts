@@ -104,7 +104,7 @@ export interface AppSettings {
   product: ProductSettings;
   theme_mode: 'light' | 'dark' | 'system';
   appearance_mode: 'solid' | 'glass';
-  accent: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'indigo' | 'violet';
+  accent: 'brand' | 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'indigo' | 'violet';
   font_size: number;
   border_radius: number;
   sidebar_width: number;

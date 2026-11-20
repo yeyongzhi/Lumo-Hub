@@ -9,6 +9,7 @@ import { Toaster } from 'vue-sonner';
       position="top-center"
       :offset="16"
       :duration="8000"
+      expand
       :toast-options="{
         style: {
           background: 'var(--toast-background)',

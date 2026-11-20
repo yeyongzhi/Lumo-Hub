@@ -103,6 +103,10 @@ const captureOpen = ref(false),
   captureKind = ref('sticky'),
   captureMenuOpen = ref(false);
 let captureMenuTimer: ReturnType<typeof setTimeout> | undefined;
+function focusShortcutsTitle(event: Event) {
+  event.preventDefault();
+  document.getElementById('shortcuts-title')?.focus();
+}
 function openCaptureMenu() {
   clearTimeout(captureMenuTimer);
   captureMenuOpen.value = true;
@@ -471,9 +475,9 @@ onUnmounted(() => {
         " /></DialogContent
   ></Dialog>
   <Dialog v-model:open="shortcutsOpen"
-    ><DialogContent
+    ><DialogContent @open-auto-focus="focusShortcutsTitle"
       ><DialogHeader
-        ><DialogTitle>快捷键与快速启动</DialogTitle
+        ><DialogTitle id="shortcuts-title" tabindex="-1">快捷键与快速启动</DialogTitle
         ><DialogDescription>从键盘快速找到内容和记录想法。</DialogDescription></DialogHeader
       >
       <div class="flex flex-col gap-3 text-sm">
@@ -884,6 +888,7 @@ onUnmounted(() => {
             ]"
             :aria-label="sidebarCollapsed ? item.label : undefined"
             :title="sidebarCollapsed ? item.label : undefined"
+            tooltip-side="right"
             @click="navigate(item.id)"
             ><component :is="item.icon" /><span v-if="!sidebarCollapsed" class="truncate">{{
               item.label
@@ -897,6 +902,7 @@ onUnmounted(() => {
             variant="ghost"
             :size="narrowSidebar && !sidebarCollapsed ? 'icon-xs' : 'icon'"
             :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+            tooltip-side="right"
             @click="sidebarCollapsed = !sidebarCollapsed"
             ><PanelLeftOpen v-if="sidebarCollapsed" /><PanelLeftClose v-else
           /></Button>

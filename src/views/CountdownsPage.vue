@@ -13,9 +13,11 @@ import {
   LayoutGrid,
   List,
   Ellipsis,
+  Eye,
 } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import Table from '@/components/ui/table/Table.vue';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -49,6 +51,7 @@ import { useWorkspaceStore } from '@/stores/workspace';
 import type { Countdown } from '@/lib/types';
 
 const store = useWorkspaceStore();
+const moreMenuDismissedOutside = ref(false);
 const editingId = ref('');
 const detailId = ref('');
 const detail = computed(() => store.countdowns.find((item) => item.id === detailId.value));
@@ -77,6 +80,21 @@ watch(dateStatus, (value, previous) => {
 const query = ref(''),
   startDate = ref(''),
   endDate = ref('');
+const rangeOpen = ref(false);
+const draftStartDate = ref('');
+const draftEndDate = ref('');
+watch(rangeOpen, (open) => {
+  if (open) {
+    draftStartDate.value = startDate.value;
+    draftEndDate.value = endDate.value;
+  }
+});
+function applyDateRange() {
+  if (invalidRange.value) return;
+  startDate.value = draftStartDate.value;
+  endDate.value = draftEndDate.value;
+  rangeOpen.value = false;
+}
 const batchMode = ref(false),
   selectedIds = ref<string[]>([]),
   batchBusy = ref(false),
@@ -102,7 +120,7 @@ watch(
     void store.saveClient('lumo-countdown-display', value).catch((e) => store.notify(String(e))),
 );
 const invalidRange = computed(
-  () => !!startDate.value && !!endDate.value && startDate.value > endDate.value,
+  () => !!draftStartDate.value && !!draftEndDate.value && draftStartDate.value > draftEndDate.value,
 );
 const entries = computed(() =>
   store.countdowns
@@ -249,87 +267,119 @@ async function removeSelected() {
   <div class="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden">
     <div
       v-if="!detailId"
-      class="flex shrink-0 flex-wrap items-center gap-3"
+      class="flex shrink-0 flex-wrap items-center justify-between gap-3"
       aria-label="倒数日筛选与操作"
     >
-      <div class="flex min-w-40 flex-1 items-center gap-3">
-        <Input
-          v-model="query"
-          class="min-w-0"
-          placeholder="搜索名称、内容"
-          aria-label="搜索倒数日名称和内容"
-        />
+      <div class="flex min-w-0 flex-wrap items-center gap-3">
+        <div class="w-64 min-w-40 max-w-full">
+          <Input
+            v-model="query"
+            class="min-w-0"
+            placeholder="搜索名称、内容"
+            aria-label="搜索倒数日名称和内容"
+          />
+        </div>
+        <Popover v-model:open="rangeOpen">
+          <PopoverTrigger as-child>
+            <Button variant="outline" size="sm" aria-label="筛选日期范围">
+              <CalendarDays />{{
+                startDate || endDate ? `${startDate || '不限'} 至 ${endDate || '不限'}` : '日期范围'
+              }}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" class="w-72">
+            <div class="flex flex-col gap-3">
+              <Field
+                ><FieldLabel for="filter-start-date">开始日期</FieldLabel
+                ><Input
+                  id="filter-start-date"
+                  v-model="draftStartDate"
+                  type="date"
+                  :max="draftEndDate || undefined"
+              /></Field>
+              <Field
+                ><FieldLabel for="filter-end-date">截止日期</FieldLabel
+                ><Input
+                  id="filter-end-date"
+                  v-model="draftEndDate"
+                  type="date"
+                  :min="draftStartDate || undefined"
+              /></Field>
+              <p v-if="invalidRange" class="text-sm text-destructive">开始日期不能晚于截止日期。</p>
+              <div class="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  @click="
+                    draftStartDate = '';
+                    draftEndDate = '';
+                  "
+                  >清空</Button
+                >
+                <Button size="sm" :disabled="invalidRange" @click="applyDateRange">确认</Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
-      <div class="flex shrink-0 items-center gap-2" role="group" aria-label="日期范围筛选">
-        <Input
-          v-model="startDate"
-          type="date"
-          class="h-8 w-36"
-          aria-label="起始日期"
-          :max="endDate || undefined"
-        /><span class="text-xs text-muted-foreground">至</span
-        ><Input
-          v-model="endDate"
-          type="date"
-          class="h-8 w-36"
-          aria-label="结束日期"
-          :min="startDate || undefined"
-        /><Button
-          v-if="startDate || endDate"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="清除日期筛选"
-          @click="
-            startDate = '';
-            endDate = '';
-          "
-          ><RotateCcw
-        /></Button>
-      </div>
-      <Select v-model="dateStatus"
-        ><SelectTrigger class="w-28" aria-label="日期状态"><SelectValue /></SelectTrigger
-        ><SelectContent
-          ><SelectGroup
-            ><SelectItem value="all">全部</SelectItem><SelectItem value="active">未结束</SelectItem
-            ><SelectItem value="past">已结束</SelectItem></SelectGroup
-          ></SelectContent
-        ></Select
-      >
-      <TooltipProvider :delay-duration="200"
-        ><Tabs :model-value="displayMode" @update:model-value="setDisplayMode"
-          ><TabsList aria-label="显示方式"
-            ><Tooltip
-              ><TooltipTrigger as-child
-                ><TabsTrigger value="grid" aria-label="网格展示"
-                  ><LayoutGrid /></TabsTrigger></TooltipTrigger
-              ><TooltipContent>网格展示</TooltipContent></Tooltip
-            ><Tooltip
-              ><TooltipTrigger as-child
-                ><TabsTrigger value="list" aria-label="列表展示"
-                  ><List /></TabsTrigger></TooltipTrigger
-              ><TooltipContent>列表展示</TooltipContent></Tooltip
-            ></TabsList
-          ></Tabs
-        ></TooltipProvider
-      >
-      <div class="flex shrink-0 items-center gap-px">
-        <Button size="sm" class="rounded-r-none" @click="addDate"
-          ><Plus data-icon="inline-start" />添加倒数日</Button
-        ><DropdownMenu
-          ><DropdownMenuTrigger as-child
-            ><Button size="icon-sm" class="rounded-l-none" aria-label="更多倒数日操作"
-              ><Ellipsis /></Button></DropdownMenuTrigger
-          ><DropdownMenuContent align="end"
-            ><DropdownMenuGroup
-              ><DropdownMenuItem :disabled="batchBusy" @select="toggleManagement"
-                ><Pencil />{{ batchMode ? '完成管理' : '管理倒数日' }}</DropdownMenuItem
-              ></DropdownMenuGroup
-            ></DropdownMenuContent
-          ></DropdownMenu
+      <div class="flex flex-wrap items-center gap-3">
+        <Select v-model="dateStatus"
+          ><SelectTrigger class="w-28" aria-label="日期状态"><SelectValue /></SelectTrigger
+          ><SelectContent
+            ><SelectGroup
+              ><SelectItem value="all">全部</SelectItem
+              ><SelectItem value="active">未结束</SelectItem
+              ><SelectItem value="past">已结束</SelectItem></SelectGroup
+            ></SelectContent
+          ></Select
         >
+        <TooltipProvider :delay-duration="200"
+          ><Tabs :model-value="displayMode" @update:model-value="setDisplayMode"
+            ><TabsList aria-label="显示方式"
+              ><Tooltip
+                ><TooltipTrigger as-child
+                  ><TabsTrigger value="grid" aria-label="网格展示"
+                    ><LayoutGrid /></TabsTrigger></TooltipTrigger
+                ><TooltipContent>网格展示</TooltipContent></Tooltip
+              ><Tooltip
+                ><TooltipTrigger as-child
+                  ><TabsTrigger value="list" aria-label="列表展示"
+                    ><List /></TabsTrigger></TooltipTrigger
+                ><TooltipContent>列表展示</TooltipContent></Tooltip
+              ></TabsList
+            ></Tabs
+          ></TooltipProvider
+        >
+        <div class="flex shrink-0 items-center gap-px">
+          <Button size="sm" class="rounded-r-none" @click="addDate"
+            ><Plus data-icon="inline-start" />添加倒数日</Button
+          ><DropdownMenu
+            @update:open="
+              (open) => {
+                if (open) moreMenuDismissedOutside = false;
+              }
+            "
+            ><DropdownMenuTrigger as-child
+              ><Button size="icon-sm" class="rounded-l-none" aria-label="更多倒数日操作"
+                ><Ellipsis /></Button></DropdownMenuTrigger
+            ><DropdownMenuContent
+              align="end"
+              @pointer-down-outside="moreMenuDismissedOutside = true"
+              @close-auto-focus="
+                (event) => {
+                  if (moreMenuDismissedOutside) event.preventDefault();
+                }
+              "
+              ><DropdownMenuGroup
+                ><DropdownMenuItem :disabled="batchBusy" @select="toggleManagement"
+                  ><Pencil />{{ batchMode ? '完成管理' : '管理倒数日' }}</DropdownMenuItem
+                ></DropdownMenuGroup
+              ></DropdownMenuContent
+            ></DropdownMenu
+          >
+        </div>
       </div>
     </div>
-    <p v-if="invalidRange" class="shrink-0 text-sm text-destructive">开始日期不能晚于结束日期。</p>
     <div
       v-if="batchMode && !showForm && !detailId"
       class="flex shrink-0 items-center gap-3 rounded-xl bg-muted p-3"
@@ -464,10 +514,10 @@ async function removeSelected() {
           </Card>
           <div v-else-if="detail" class="flex flex-col gap-5">
             <div class="flex items-center justify-between gap-3">
-              <Button variant="ghost" @click="detailId = ''"
+              <Button variant="secondary" @click="detailId = ''"
                 ><ArrowLeft data-icon="inline-start" />返回倒数日</Button
               >
-              <Button variant="outline" @click="edit(detail)"
+              <Button variant="secondary" @click="edit(detail)"
                 ><Pencil data-icon="inline-start" />编辑</Button
               >
             </div>
@@ -476,14 +526,12 @@ async function removeSelected() {
                 <CalendarDays class="size-6 text-primary" />
                 <h1 class="text-2xl font-semibold">{{ detail.title }}</h1>
               </div>
-              <div class="rounded-xl bg-muted/40 p-6">
-                <p class="text-sm text-muted-foreground">距离目标日</p>
+              <div>
+                <p class="text-lg text-foreground">
+                  距离目标日 · {{ format(countdownTarget(detail, now), 'yyyy-MM-dd') }}
+                </p>
                 <p class="mt-2 text-3xl font-semibold tabular-nums text-primary">
                   {{ countdownStatus(detail, now).text }}
-                </p>
-                <p class="mt-2 text-sm text-muted-foreground">
-                  {{ format(countdownTarget(detail, now), 'yyyy-MM-dd')
-                  }}{{ detail.repeat_type === 'yearly' ? ' · 下一次日期' : '' }}
                 </p>
               </div>
               <dl class="grid gap-5 text-sm sm:grid-cols-2">
@@ -520,6 +568,80 @@ async function removeSelected() {
               </dl>
             </Card>
           </div>
+          <Table
+            v-else-if="entries.length && displayMode === 'list'"
+            class="text-center [&_th:not(:last-child)]:border-r [&_td:not(:last-child)]:border-r"
+          >
+            <thead class="border-b bg-muted/50 text-center text-muted-foreground">
+              <tr>
+                <th v-if="batchMode" scope="col" class="w-12 px-4 py-3">
+                  <span class="sr-only">选择</span>
+                </th>
+                <th scope="col" class="w-16 px-4 py-3 font-medium">序号</th>
+                <th scope="col" class="px-4 py-3 font-medium">名称</th>
+                <th scope="col" class="px-4 py-3 font-medium">目标日期</th>
+                <th scope="col" class="px-4 py-3 font-medium">重复方式</th>
+                <th scope="col" class="px-4 py-3 font-medium">距离目标日</th>
+                <th scope="col" class="w-px px-4 py-3 whitespace-nowrap font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(item, index) in entries"
+                :id="'countdown-' + item.id"
+                :key="item.id"
+                class="border-b last:border-0 hover:bg-muted/50"
+                :class="!batchMode && 'cursor-pointer'"
+                :tabindex="batchMode ? undefined : 0"
+                :aria-label="batchMode ? undefined : `查看 ${item.title} 详情`"
+                @click="!batchMode && (detailId = item.id)"
+                @keydown.enter.prevent="!batchMode && (detailId = item.id)"
+                @keydown.space.prevent="!batchMode && (detailId = item.id)"
+              >
+                <td v-if="batchMode" class="px-4 py-3">
+                  <Checkbox
+                    :model-value="selectedIds.includes(item.id)"
+                    :disabled="batchBusy"
+                    :aria-label="'选择 ' + item.title"
+                    @update:model-value="toggleSelection(item.id)"
+                  />
+                </td>
+                <td class="px-4 py-3 tabular-nums">{{ index + 1 }}</td>
+                <td class="px-4 py-3">
+                  <span class="font-medium">{{ item.title }}</span>
+                  <p v-if="item.description" class="mt-1 line-clamp-2 text-muted-foreground">
+                    {{ item.description }}
+                  </p>
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap tabular-nums">
+                  {{ format(countdownTarget(item, now), 'yyyy-MM-dd') }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap">
+                  {{ item.repeat_type === 'yearly' ? '每年重复' : '一次性' }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap font-medium text-primary">
+                  {{ countdownStatus(item, now).text }}
+                </td>
+                <td class="px-4 py-3 whitespace-nowrap" @keydown.stop>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    :disabled="batchBusy"
+                    :aria-label="'查看 ' + item.title"
+                    @click.stop="detailId = item.id"
+                    ><Eye data-icon="inline-start" />查看</Button
+                  ><Button
+                    variant="ghost"
+                    size="sm"
+                    :disabled="batchBusy"
+                    :aria-label="'编辑 ' + item.title"
+                    @click.stop="edit(item)"
+                    ><Pencil data-icon="inline-start" />编辑</Button
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </Table>
           <div
             v-else-if="entries.length"
             :class="
@@ -539,11 +661,12 @@ async function removeSelected() {
               @click="!batchMode && (detailId = item.id)"
               @keydown.enter.prevent="!batchMode && (detailId = item.id)"
               @keydown.space.prevent="!batchMode && (detailId = item.id)"
-              :class="
+              :class="[
                 displayMode === 'grid'
-                  ? 'min-h-48 flex-col justify-between'
-                  : 'flex-row items-center gap-5'
-              "
+                  ? 'min-h-48 flex-col justify-between transition-colors hover:border-primary'
+                  : 'flex-row items-center gap-5',
+                !batchMode && 'cursor-pointer',
+              ]"
             >
               <div class="flex min-w-0 flex-1 items-start gap-3">
                 <Checkbox

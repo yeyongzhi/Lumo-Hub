@@ -106,7 +106,7 @@ onUnmounted(stopTicker);
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-4 text-center">
+  <div class="flex min-h-0 flex-1 flex-col gap-4">
     <Tabs :model-value="mode" @update:model-value="changeMode">
       <TabsList>
         <TabsTrigger value="pomodoro">番茄钟</TabsTrigger>
@@ -114,46 +114,53 @@ onUnmounted(stopTicker);
         <TabsTrigger value="stopwatch">正计时</TabsTrigger>
       </TabsList>
     </Tabs>
-    <div v-if="mode === 'pomodoro'" class="flex items-center gap-3">
-      <span class="text-sm text-muted-foreground">{{
-        phase === 'focus' ? '专注 · 25 分钟' : '休息 · 5 分钟'
-      }}</span>
-      <Button variant="outline" size="sm" :disabled="running" @click="switchPhase">
-        {{ phase === 'focus' ? '切换到休息' : '切换到专注' }}
-      </Button>
-    </div>
-    <div v-else-if="mode === 'countdown'" class="grid w-full max-w-60 grid-cols-2 gap-3 text-left">
-      <Field>
-        <FieldLabel for="timer-minutes">分钟</FieldLabel>
-        <Input
-          id="timer-minutes"
-          v-model="minutes"
-          type="number"
-          min="0"
-          max="999"
-          step="1"
-          :disabled="started"
-        />
-      </Field>
-      <Field>
-        <FieldLabel for="timer-seconds">秒</FieldLabel>
-        <Input
-          id="timer-seconds"
-          v-model="seconds"
-          type="number"
-          min="0"
-          max="59"
-          step="1"
-          :disabled="started"
-        />
-      </Field>
-    </div>
-    <p role="timer" aria-label="计时时间" class="font-mono text-5xl tabular-nums">{{ display }}</p>
-    <div class="flex gap-2">
-      <Button :disabled="!running && countingDown && duration === 0" @click="toggle">
-        {{ running ? '暂停' : complete ? '重新开始' : started ? '继续' : '开始' }}
-      </Button>
-      <Button variant="outline" :disabled="!started" @click="reset">重置</Button>
+    <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-center">
+      <div v-if="mode === 'pomodoro'" class="flex items-center gap-3">
+        <span class="text-sm text-muted-foreground">{{
+          phase === 'focus' ? '专注 · 25 分钟' : '休息 · 5 分钟'
+        }}</span>
+        <Button variant="outline" size="sm" :disabled="running" @click="switchPhase">
+          {{ phase === 'focus' ? '切换到休息' : '切换到专注' }}
+        </Button>
+      </div>
+      <div
+        v-else-if="mode === 'countdown'"
+        class="grid w-full max-w-60 grid-cols-2 gap-3 text-left"
+      >
+        <Field>
+          <FieldLabel for="timer-minutes">分钟</FieldLabel>
+          <Input
+            id="timer-minutes"
+            v-model="minutes"
+            type="number"
+            min="0"
+            max="999"
+            step="1"
+            :disabled="started"
+          />
+        </Field>
+        <Field>
+          <FieldLabel for="timer-seconds">秒</FieldLabel>
+          <Input
+            id="timer-seconds"
+            v-model="seconds"
+            type="number"
+            min="0"
+            max="59"
+            step="1"
+            :disabled="started"
+          />
+        </Field>
+      </div>
+      <p role="timer" aria-label="计时时间" class="font-mono text-5xl tabular-nums">
+        {{ display }}
+      </p>
+      <div class="flex gap-2">
+        <Button :disabled="!running && countingDown && duration === 0" @click="toggle">
+          {{ running ? '暂停' : complete ? '重新开始' : started ? '继续' : '开始' }}
+        </Button>
+        <Button variant="outline" :disabled="!started" @click="reset">重置</Button>
+      </div>
     </div>
   </div>
 </template>

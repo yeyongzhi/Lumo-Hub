@@ -35,6 +35,7 @@ import {
   Newspaper,
   Flower2,
   RefreshCw,
+  CircleAlert,
   AppWindow,
   ArrowUpRight,
   CalendarDays,
@@ -521,6 +522,7 @@ function isOnline(kind: HomeWidgetKind): kind is FeedKind {
   return ['weather', 'hitokoto', 'news', 'poetry'].includes(kind);
 }
 const feedUpdates = ref<Record<string, string>>({});
+const feedStatuses = ref<Record<string, string>>({});
 const feedLoading = ref<Record<string, boolean>>({});
 const refreshKeys = ref<Record<FeedKind, number>>({ weather: 0, hitokoto: 0, news: 0, poetry: 0 });
 const modulePages: Partial<Record<HomeWidgetKind, PageId>> = {
@@ -1171,7 +1173,7 @@ async function saveLayout() {
             <span class="hidden truncate text-sm font-semibold @min-[11rem]:inline">{{
               widgetNames[widget.kind]
             }}</span>
-            <div class="flex shrink-0 gap-1">
+            <div class="flex shrink-0 items-center gap-1">
               <DropdownMenu v-if="['sticky', 'note', 'countdowns'].includes(widget.kind)"
                 ><DropdownMenuTrigger as-child
                   ><Button
@@ -1229,12 +1231,15 @@ async function saveLayout() {
                   ></DropdownMenuTrigger
                 >
                 <DropdownMenuContent align="end"
-                  ><DropdownMenuLabel>布局尺寸 · 宽 × 高</DropdownMenuLabel
+                  ><DropdownMenuLabel
+                    >布局尺寸 · 宽 × 高<br /><span class="text-xs font-normal text-muted-foreground"
+                      >宽度自适应</span
+                    ></DropdownMenuLabel
                   ><DropdownMenuRadioGroup
                     :model-value="widget.size"
                     @update:model-value="(value) => resize(widget, value as HomeWidgetSize)"
                     ><DropdownMenuRadioItem v-for="size in widgetSizes" :key="size" :value="size">{{
-                      `${size.replace('x', ' × ')} · 宽度自适应`
+                      size.replace('x', ' × ')
                     }}</DropdownMenuRadioItem></DropdownMenuRadioGroup
                   ></DropdownMenuContent
                 >
@@ -1331,6 +1336,27 @@ async function saveLayout() {
                 aria-label="设置卡片内容"
                 @click="configure(widget)"
                 ><ListFilter /></Button
+              ><TooltipProvider
+                v-if="isOnline(widget.kind) && feedStatuses[widget.id] && !feedLoading[widget.id]"
+              >
+                <Tooltip
+                  ><TooltipTrigger as-child
+                    ><button
+                      type="button"
+                      class="inline-flex size-6 items-center justify-center text-destructive"
+                      aria-label="查看更新状态"
+                    >
+                      <CircleAlert class="size-4" /></button
+                  ></TooltipTrigger>
+                  <TooltipContent class="max-w-80 whitespace-pre-wrap break-words">{{
+                    feedStatuses[widget.id]
+                  }}</TooltipContent>
+                </Tooltip> </TooltipProvider
+              ><span
+                v-if="isOnline(widget.kind) && feedLoading[widget.id]"
+                role="status"
+                class="text-xs text-muted-foreground"
+                >更新中...</span
               ><Button
                 v-if="isOnline(widget.kind)"
                 variant="ghost"
@@ -1384,6 +1410,7 @@ async function saveLayout() {
                   }
                 "
                 @loading="(value) => (feedLoading[widget.id] = value)"
+                @status="(value) => (feedStatuses[widget.id] = value)"
               /><ClockWidget v-else-if="widget.kind === 'clock'" :size="widget.size" />
               <template v-else-if="widget.kind === 'time'"
                 ><div class="flex min-h-0 flex-1 items-center justify-center">
@@ -1683,7 +1710,7 @@ async function saveLayout() {
                     class="h-[4.25rem] min-w-0 flex-col justify-center gap-1.5 rounded-xl px-1 py-1 hover:bg-muted/70"
                     :disabled="openingId === item.id"
                     :aria-label="`打开 ${item.name}，${kindLabels[item.kind]}，${openedTime(item.last_opened_at)}`"
-                    :title="`${item.target}\n${kindLabels[item.kind]} · ${openedTime(item.last_opened_at)}`"
+                    :title="item.name"
                     @click="launchRecent(item)"
                     ><img
                       v-if="resourceImage(store.settings.client, item)"

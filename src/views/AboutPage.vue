@@ -68,6 +68,13 @@ async function openProject() {
     status.value = `无法打开项目主页：${String(error)}`;
   }
 }
+async function openHomepage() {
+  try {
+    await openUrl('https://yeyongzhi.github.io/Lumo-Hub/');
+  } catch (error) {
+    status.value = `无法打开产品主页：${String(error)}`;
+  }
+}
 onMounted(async () => {
   try {
     version.value = await getVersion();
@@ -152,10 +159,15 @@ defineExpose({ checkUpdate });
   <div class="relative flex flex-col items-start gap-5 text-left">
     <img src="/brand/lumohub.png" alt="LumoHub" class="size-20 shrink-0 object-contain" />
     <div>
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 class="text-2xl font-semibold">Lumo-Hub</h2>
+      <div class="flex flex-col items-start gap-2">
         <div class="flex items-center gap-1">
-          <Badge class="px-3 py-1 text-sm">版本 {{ version }}</Badge>
+          <h2 class="text-2xl font-semibold">Lumo-Hub</h2>
+          <Button variant="ghost" size="icon-sm" aria-label="前往产品主页" @click="openHomepage"
+            ><ExternalLink
+          /></Button>
+        </div>
+        <div class="flex items-center gap-1">
+          <Badge class="px-3 py-1 text-sm text-white">版本 {{ version }}</Badge>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -169,7 +181,7 @@ defineExpose({ checkUpdate });
       <p class="mt-1 text-sm text-muted-foreground">本地优先的个人桌面效率工作台</p>
     </div>
     <div class="flex flex-wrap items-center gap-3">
-      <Button :disabled="checking || installing" @click="checkUpdate"
+      <Button variant="outline" :disabled="checking || installing" @click="checkUpdate"
         ><RefreshCw data-icon="inline-start" :class="checking ? 'animate-spin' : ''" />{{
           checking ? '正在检查…' : '检查更新'
         }}</Button

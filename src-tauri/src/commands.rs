@@ -275,7 +275,7 @@ pub fn set_setting(
         "accent" => {
             let v = value.as_str().ok_or("强调色无效")?;
             if ![
-                "red", "orange", "yellow", "green", "blue", "indigo", "violet",
+                "brand", "red", "orange", "yellow", "green", "blue", "indigo", "violet",
             ]
             .contains(&v)
             {

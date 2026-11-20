@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useRecordAutosave } from '@/lib/use-record-autosave';
 import { computed, ref, watch } from 'vue';
-import { Plus, Search, StickyNote, Trash2, Pin, PinOff } from '@lucide/vue';
+import { Plus, Search, StickyNote, Trash2, Pin, PinOff, Info } from '@lucide/vue';
+import RecordDetailsDialog from '@/components/RecordDetailsDialog.vue';
+import type { Sticky } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,6 +21,7 @@ import { api } from '@/lib/api';
 import { useWorkspaceStore } from '@/stores/workspace';
 
 const store = useWorkspaceStore();
+const details = ref<Sticky | null>(null);
 const recentSticky = computed(() =>
   store.stickies.reduce<(typeof store.stickies)[number] | undefined>(
     (latest, item) => (!latest || item.updated_at > latest.updated_at ? item : latest),
@@ -165,7 +168,7 @@ watch(
   <div class="grid h-full min-h-0 flex-1 grid-cols-[17rem_minmax(0,1fr)] gap-5">
     <Card class="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
       <div class="shrink-0 px-1">
-        <p class="text-base font-semibold">我的便签 · {{ store.stickies.length }}</p>
+        <p class="text-base font-semibold">我的便签 · 共 {{ store.stickies.length }} 条记录</p>
         <p class="mt-1 text-xs text-muted-foreground">适合临时记录：置顶常用内容，</p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
@@ -209,6 +212,8 @@ watch(
                 />{{
                   store.settings.product.pinned_stickies.includes(item.id) ? '取消置顶' : '置顶'
                 }}</ContextMenuItem
+              ><ContextMenuItem @select="details = item"
+                ><Info />详情</ContextMenuItem
               ></ContextMenuGroup
             ><ContextMenuSeparator /><ContextMenuGroup
               ><ContextMenuItem variant="destructive" @select="askDelete(item.id)"
@@ -268,6 +273,7 @@ watch(
       <h2 class="font-semibold">选择一条便签</h2>
       <p class="mt-2 text-sm text-muted-foreground">也可以创建一条新的便签。</p></Card
     >
+    <RecordDetailsDialog :record="details" kind="便签" @close="details = null" />
     <ConfirmDialog
       v-model:open="deleteOpen"
       title="删除便签？"

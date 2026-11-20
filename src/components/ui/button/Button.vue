@@ -13,6 +13,7 @@ interface Props extends PrimitiveProps {
   size?: ButtonVariants['size'];
   class?: HTMLAttributes['class'];
   disableTooltip?: boolean;
+  tooltipSide?: 'top' | 'right' | 'bottom' | 'left';
 }
 
 defineOptions({ inheritAttrs: false });
@@ -46,7 +47,7 @@ const props = withDefaults(defineProps<Props>(), {
           :class="cn(buttonVariants({ variant, size }), props.class)"
           ><slot
         /></Primitive> </TooltipTrigger
-      ><TooltipContent>{{ tooltip() }}</TooltipContent></Tooltip
+      ><TooltipContent :side="tooltipSide">{{ tooltip() }}</TooltipContent></Tooltip
     ></TooltipProvider
   >
   <Primitive

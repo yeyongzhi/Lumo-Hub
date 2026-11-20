@@ -12,6 +12,7 @@ const emit = defineEmits<{
   metadata: [value: string];
   updated: [value: string];
   loading: [value: boolean];
+  status: [value: string];
 }>();
 const data = ref<FeedData | null>(null);
 watch(data, (value) => emit('metadata', value?.date || ''));
@@ -62,13 +63,24 @@ const stale = computed(
           : 60 * 60_000),
 );
 const feedStatus = computed(() => {
-  if (loading.value) return data.value ? '正在更新' : '正在加载';
   if (offline.value) return data.value ? '离线 · 显示缓存' : '当前离线，暂无缓存';
   if (error.value) return data.value ? '更新失败 · 显示缓存' : '加载失败';
   if (stale.value && data.value) return '缓存可能已过期';
-  if (!data.value) return '暂无内容';
   return '';
 });
+watch(
+  [feedStatus, error, loadedAt],
+  ([status, reason, time]) =>
+    emit(
+      'status',
+      status
+        ? [status, time ? `上次更新：${new Date(time).toLocaleString('zh-CN')}` : '', reason]
+            .filter(Boolean)
+            .join('\n')
+        : '',
+    ),
+  { immediate: true },
+);
 const cacheKey = () => `lumo-feed-${props.kind}-${props.kind === 'weather' ? city.value : ''}`;
 async function readCache() {
   data.value = null;
@@ -173,21 +185,6 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="flex min-h-full flex-1 flex-col gap-2">
-    <div
-      v-if="feedStatus"
-      role="status"
-      class="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
-    >
-      <span>{{ feedStatus }}</span>
-      <Button
-        v-if="!loading && (error || offline)"
-        variant="outline"
-        size="sm"
-        class="h-6 px-2 text-xs"
-        @click="load(true)"
-        >重试</Button
-      >
-    </div>
     <template v-if="kind === 'weather'">
       <div
         class="flex flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-2"
@@ -258,13 +255,6 @@ onBeforeUnmount(() => {
         {{ data.content }}
       </p>
     </template>
-    <p v-if="data && (stale || offline || error) && loadedAt" class="text-xs text-muted-foreground">
-      上次更新：{{ new Date(loadedAt).toLocaleString('zh-CN') }}
-    </p>
-    <details v-if="error" class="shrink-0 text-xs text-muted-foreground">
-      <summary class="cursor-pointer">查看原因</summary>
-      <p class="mt-1 break-words">{{ error }}</p>
-    </details>
     <div
       v-if="data && (kind !== 'weather' || offline || error)"
       class="mt-auto flex shrink-0 flex-wrap items-baseline justify-end gap-x-4 gap-y-2 text-sm leading-6 text-muted-foreground"

@@ -1,6 +1,7 @@
 import type { AppSettings } from './types';
 
 const accents: Record<AppSettings['accent'], string> = {
+  brand: '0.60050028 0.21401454 257.09955',
   red: '0.62 0.22 25',
   orange: '0.60 0.18 48',
   yellow: '0.58 0.15 85',
@@ -18,8 +19,11 @@ export function applySettings(settings: AppSettings) {
   root.dataset.themeMode = settings.theme_mode;
   root.dataset.appearance = settings.appearance_mode ?? 'glass';
   root.dataset.accent = settings.accent;
-  root.style.setProperty('--accent-color', accents[settings.accent]);
-  root.style.setProperty('--primary-foreground', 'oklch(1 0 0)');
+  root.style.setProperty('--accent-color', accents[settings.accent] ?? accents.blue);
+  root.style.setProperty(
+    '--primary-foreground',
+    settings.accent === 'brand' ? '#000' : 'oklch(1 0 0)',
+  );
   root.style.setProperty('--radius', `${settings.border_radius ?? 16}px`);
   root.style.fontSize = `${settings.font_size}px`;
 }

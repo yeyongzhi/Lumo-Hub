@@ -115,6 +115,7 @@ const appearanceModes = [
   { id: 'glass', label: '毛玻璃' },
 ] as const;
 const accents = [
+  { id: 'brand', label: '品牌色', className: 'bg-[#007afc]' },
   { id: 'red', label: '红', className: 'bg-red-500' },
   { id: 'orange', label: '橙', className: 'bg-orange-500' },
   { id: 'yellow', label: '黄', className: 'bg-yellow-400' },
@@ -351,7 +352,7 @@ async function restoreBackup() {
                 >
               </section>
               <section>
-                <h3 class="mb-3 text-base font-semibold">强调色</h3>
+                <h3 class="mb-3 text-base font-semibold">主题色</h3>
                 <div class="flex flex-wrap gap-3">
                   <Button
                     v-for="accent in accents"
@@ -364,7 +365,8 @@ async function restoreBackup() {
                         ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
                         : ''
                     "
-                    :aria-label="`${accent.label}色主题`"
+                    :aria-label="accent.id === 'brand' ? '品牌色主题' : `${accent.label}色主题`"
+                    :aria-pressed="store.settings.accent === accent.id"
                     @click="setAccent(accent.id)"
                     ><span class="size-4 rounded-full" :class="accent.className"></span
                     >{{ accent.label }}</Button
@@ -468,26 +470,20 @@ async function restoreBackup() {
               >
               <Field>
                 <div class="min-w-0 flex-1">
-                  <FieldLabel class="text-base font-semibold" for="library-icon-size"
-                    >图标大小</FieldLabel
-                  >
+                  <FieldLabel class="text-base font-semibold">图标大小</FieldLabel>
                   <FieldDescription>调整应用库网格和列表中的启动项图标。</FieldDescription>
                 </div>
-                <Select
+                <Tabs
+                  class="max-w-fit"
                   :model-value="libraryIconSize(store.settings.client)"
                   @update:model-value="setLibraryIconSize"
                 >
-                  <SelectTrigger id="library-icon-size" class="w-full max-w-xs"
-                    ><SelectValue
-                  /></SelectTrigger>
-                  <SelectContent
-                    ><SelectGroup>
-                      <SelectItem value="small">小</SelectItem>
-                      <SelectItem value="standard">中（默认）</SelectItem>
-                      <SelectItem value="large">大</SelectItem>
-                    </SelectGroup></SelectContent
-                  >
-                </Select>
+                  <TabsList aria-label="应用库图标大小">
+                    <TabsTrigger value="small">小</TabsTrigger>
+                    <TabsTrigger value="standard">中（默认）</TabsTrigger>
+                    <TabsTrigger value="large">大</TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </Field>
               <Field>
                 <div class="min-w-0 flex-1">
