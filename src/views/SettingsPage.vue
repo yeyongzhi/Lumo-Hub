@@ -41,6 +41,8 @@ import { api } from '@/lib/api';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { autoUpdateEnabled, updateInterval, updateIntervals } from '@/lib/update-preferences';
 import {
   libraryColumnOptions,
   libraryColumns,
@@ -86,8 +88,9 @@ watch(
 );
 const settingsMenu = [
   { id: 'appearance', label: '外观', icon: Settings },
+  { id: 'app', label: '应用设置', icon: Settings },
   { id: 'home', label: '首页设置', icon: LayoutDashboard },
-  { id: 'library', label: '应用库', icon: AppWindow },
+  { id: 'library', label: '应用启动项', icon: AppWindow },
   { id: 'data', label: '数据与备份', icon: Database },
   { id: 'launcher', label: '快捷启动', icon: Keyboard },
   { id: 'backup', label: '自动备份', icon: ShieldCheck },
@@ -98,12 +101,12 @@ const fontSizes = computed(() =>
   [...new Set([12, 14, 16, 18, 20, 24, store.settings.font_size])].sort((a, b) => a - b),
 );
 const radii = [
-  { value: 0, label: '直角 · 0 px' },
-  { value: 4, label: '微圆角 · 4 px' },
-  { value: 8, label: '小圆角 · 8 px' },
-  { value: 12, label: '中圆角 · 12 px' },
-  { value: 16, label: '大圆角 · 16 px（默认）' },
-  { value: 24, label: '超大圆角 · 24 px' },
+  { value: 0, label: '直角 · 0' },
+  { value: 4, label: '微圆角 · 4' },
+  { value: 8, label: '小圆角 · 8' },
+  { value: 12, label: '中圆角 · 12' },
+  { value: 16, label: '大圆角 · 16（默认）' },
+  { value: 24, label: '超大圆角 · 24' },
 ];
 const modes = [
   { id: 'light', label: '浅色', icon: Sun },
@@ -166,6 +169,29 @@ async function setLibraryDisplay(value: unknown) {
     await store.saveClient('lumo-library-display', value);
   } catch (e) {
     store.notify(`保存应用库设置失败：${String(e)}`);
+  }
+}
+async function setUpdatePreference(key: string, value: boolean | number) {
+  try {
+    await store.saveClient(key, value);
+  } catch (error) {
+    store.notify(`保存更新设置失败：${String(error)}`);
+  }
+}
+function setUpdateInterval(value: unknown) {
+  const minutes = Number(value);
+  if (updateIntervals.some((interval) => interval === minutes))
+    void setUpdatePreference('lumo-update-check-interval', minutes);
+}
+async function setCloseBehavior(value: unknown) {
+  if (value !== 'tray' && value !== 'quit') return;
+  try {
+    await store.setSetting('product', {
+      ...store.settings.product,
+      close_to_tray: value === 'tray',
+    });
+  } catch {
+    // The store reports save failures and restores the previous setting.
   }
 }
 async function setLibraryDensity(value: unknown) {
@@ -377,21 +403,20 @@ async function restoreBackup() {
                 <Field
                   ><FieldLabel class="text-base font-semibold" for="global-radius"
                     >全局圆角</FieldLabel
-                  ><Select
+                  ><Tabs
                     :model-value="String(store.settings.border_radius ?? 16)"
                     @update:model-value="setRadius"
-                    ><SelectTrigger id="global-radius" class="w-full max-w-xs"
-                      ><SelectValue /></SelectTrigger
-                    ><SelectContent
-                      ><SelectGroup
-                        ><SelectItem
-                          v-for="option in radii"
-                          :key="option.value"
-                          :value="String(option.value)"
-                          >{{ option.label }}</SelectItem
-                        ></SelectGroup
-                      ></SelectContent
-                    ></Select
+                    ><TabsList
+                      id="global-radius"
+                      aria-label="全局圆角"
+                      class="h-auto max-w-full flex-wrap justify-start"
+                      ><TabsTrigger
+                        v-for="option in radii"
+                        :key="option.value"
+                        :value="String(option.value)"
+                        >{{ option.label }}</TabsTrigger
+                      ></TabsList
+                    ></Tabs
                   ><FieldDescription
                     >统一调整卡片、按钮、输入框和弹窗的圆角。</FieldDescription
                   ></Field
@@ -399,18 +424,17 @@ async function restoreBackup() {
                 <Field
                   ><FieldLabel class="text-base font-semibold" for="global-font-size"
                     >全局字体大小</FieldLabel
-                  ><Select
+                  ><Tabs
                     :model-value="String(store.settings.font_size)"
                     @update:model-value="setFont"
-                    ><SelectTrigger id="global-font-size" class="w-full max-w-xs"
-                      ><SelectValue /></SelectTrigger
-                    ><SelectContent
-                      ><SelectGroup
-                        ><SelectItem v-for="size in fontSizes" :key="size" :value="String(size)"
-                          >{{ size }} px{{ size === 14 ? '（默认）' : '' }}</SelectItem
-                        ></SelectGroup
-                      ></SelectContent
-                    ></Select
+                    ><TabsList
+                      id="global-font-size"
+                      aria-label="全局字体大小"
+                      class="h-auto max-w-full flex-wrap justify-start"
+                      ><TabsTrigger v-for="size in fontSizes" :key="size" :value="String(size)"
+                        >{{ size }}{{ size === 14 ? '（默认）' : '' }}</TabsTrigger
+                      ></TabsList
+                    ></Tabs
                   ><FieldDescription
                     >选择适合阅读的字号，整个应用立即更新。</FieldDescription
                   ></Field
@@ -544,6 +568,72 @@ async function restoreBackup() {
                   ></Select
                 ></Field
               >
+            </FieldGroup>
+          </div>
+          <div v-else-if="section === 'app'" class="flex min-w-0 flex-col gap-6">
+            <FieldGroup>
+              <Field orientation="horizontal">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold">关闭窗口时</FieldLabel>
+                  <FieldDescription
+                    >最小化到托盘后，快捷启动和日期提醒会继续运行，可从托盘菜单退出。</FieldDescription
+                  >
+                </div>
+                <RadioGroup
+                  class="shrink-0"
+                  :model-value="store.settings.product.close_to_tray ? 'tray' : 'quit'"
+                  aria-label="关闭窗口时"
+                  @update:model-value="setCloseBehavior"
+                >
+                  <div class="flex items-center gap-2">
+                    <RadioGroupItem id="close-tray" value="tray" /><FieldLabel for="close-tray"
+                      >最小化到托盘</FieldLabel
+                    >
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <RadioGroupItem id="close-quit" value="quit" /><FieldLabel for="close-quit"
+                      >退出程序</FieldLabel
+                    >
+                  </div>
+                </RadioGroup>
+              </Field>
+              <Field orientation="horizontal">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="auto-update-check" class="text-base font-semibold"
+                    >自动检测更新</FieldLabel
+                  >
+                  <FieldDescription>启动时和运行期间定期检查新版本。</FieldDescription>
+                </div>
+                <Switch
+                  id="auto-update-check"
+                  :model-value="autoUpdateEnabled(store.settings.client)"
+                  @update:model-value="
+                    (value) => setUpdatePreference('lumo-auto-update-check', value)
+                  "
+                />
+              </Field>
+              <Field v-if="autoUpdateEnabled(store.settings.client)">
+                <FieldLabel for="update-check-interval" class="text-base font-semibold"
+                  >检测时间间隔</FieldLabel
+                >
+                <Select
+                  :model-value="String(updateInterval(store.settings.client))"
+                  @update:model-value="setUpdateInterval"
+                >
+                  <SelectTrigger id="update-check-interval" class="w-full max-w-xs"
+                    ><SelectValue
+                  /></SelectTrigger>
+                  <SelectContent
+                    ><SelectGroup>
+                      <SelectItem value="10">10 分钟</SelectItem>
+                      <SelectItem value="30">30 分钟</SelectItem>
+                      <SelectItem value="60">1 小时</SelectItem>
+                      <SelectItem value="360">6 小时</SelectItem>
+                      <SelectItem value="1440">24 小时</SelectItem>
+                    </SelectGroup></SelectContent
+                  >
+                </Select>
+              </Field>
             </FieldGroup>
           </div>
           <div v-else-if="section === 'data'" class="flex min-w-0 flex-col gap-6">

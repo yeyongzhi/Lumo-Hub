@@ -30,9 +30,19 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import Table from '@/components/ui/table/Table.vue';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Field, FieldLabel } from '@/components/ui/field';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
@@ -88,7 +98,9 @@ const allTags = computed(() =>
 const managingTags = ref(false);
 const tagSearch = ref('');
 const newTag = ref('');
+const createTagOpen = ref(false);
 const editingTag = ref('');
+const editTagOpen = ref(false);
 const renamedTag = ref('');
 const tagBusy = ref(false);
 const managedTags = computed(() =>
@@ -136,6 +148,8 @@ async function changeTag(oldTag: string | null, newValue: string | null) {
     tagDraft.value = (tags[activeId.value] || []).join('，');
     if (tagFilter.value === oldTag) tagFilter.value = replacement ?? 'all';
     newTag.value = '';
+    if (oldTag === null) createTagOpen.value = false;
+    else editTagOpen.value = false;
     editingTag.value = '';
     store.notify('标签已保存');
   } catch (e) {
@@ -340,7 +354,6 @@ async function openMarkdownLink(event: MouseEvent) {
     <Card class="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
       <div class="shrink-0 px-1">
         <p class="text-base font-semibold">我的笔记 · 共 {{ store.notes.length }} 条记录</p>
-        <p class="mt-1 text-xs text-muted-foreground">适合长期整理：支持 Markdown、标签与导出。</p>
       </div>
       <div
         v-if="store.noteFileIssues.length"
@@ -433,61 +446,125 @@ async function openMarkdownLink(event: MouseEvent) {
         <h2 class="font-semibold">标签管理</h2>
         <Button variant="ghost" @click="managingTags = false">返回笔记</Button>
       </div>
-      <Input v-model="tagSearch" aria-label="搜索标签" placeholder="搜索标签" />
-      <form class="flex shrink-0 gap-2" @submit.prevent="changeTag(null, newTag)">
+      <div class="flex shrink-0 items-center gap-2">
         <Input
-          v-model="newTag"
-          aria-label="新标签名称"
-          placeholder="输入新标签名称"
-          maxlength="40"
-        /><Button type="submit" :disabled="tagBusy || !newTag.trim()"
+          v-model="tagSearch"
+          class="min-w-0 flex-1"
+          aria-label="搜索标签"
+          placeholder="搜索标签"
+        />
+        <Button
+          @click="
+            newTag = '';
+            createTagOpen = true;
+          "
           ><Plus data-icon="inline-start" />新增标签</Button
         >
-      </form>
-      <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
-        <div
-          v-for="tag in managedTags"
-          :key="tag"
-          class="flex shrink-0 items-center gap-3 rounded-xl border p-3"
-        >
-          <template v-if="editingTag === tag"
-            ><Input
-              v-model="renamedTag"
-              aria-label="修改标签名称"
-              maxlength="40"
-              @keydown.enter="changeTag(tag, renamedTag)"
-            /><Button :disabled="tagBusy" @click="changeTag(tag, renamedTag)">保存</Button
-            ><Button variant="ghost" @click="editingTag = ''">取消</Button></template
-          >
-          <template v-else
-            ><div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium">{{ tag }}</p>
-              <p class="text-xs text-muted-foreground">{{ tagUsage(tag) }} 篇笔记</p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="重命名标签"
-              :disabled="tagBusy"
-              @click="
-                editingTag = tag;
-                renamedTag = tag;
-              "
-              ><Pencil /></Button
-            ><ConfirmDialog
-              title="删除标签？"
-              :description="`删除“${tag}”将移除所有笔记中的此标签，笔记内容会保留。`"
-              destructive
-              @confirm="changeTag(tag, null)"
-              ><template #trigger
-                ><Button variant="danger" size="icon" aria-label="删除标签" :disabled="tagBusy"
-                  ><Trash2 /></Button></template></ConfirmDialog
-          ></template>
-        </div>
-        <p v-if="!managedTags.length" class="py-8 text-center text-sm text-muted-foreground">
-          {{ tagSearch ? '没有匹配的标签' : '暂无标签，添加一个开始整理笔记。' }}
-        </p>
       </div>
+      <Dialog v-model:open="createTagOpen">
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>新增标签</DialogTitle>
+            <DialogDescription>输入标签名称，用于整理笔记。</DialogDescription>
+          </DialogHeader>
+          <form class="flex flex-col gap-4" @submit.prevent="changeTag(null, newTag)">
+            <Field>
+              <FieldLabel for="new-tag-name">标签名称</FieldLabel>
+              <Input
+                id="new-tag-name"
+                v-model="newTag"
+                placeholder="输入新标签名称"
+                maxlength="40"
+              />
+            </Field>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                :disabled="tagBusy"
+                @click="createTagOpen = false"
+                >取消</Button
+              >
+              <Button type="submit" :disabled="tagBusy || !newTag.trim()">{{
+                tagBusy ? '正在保存…' : '新增标签'
+              }}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog v-model:open="editTagOpen">
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>编辑标签</DialogTitle>
+            <DialogDescription>修改标签名称，使用此标签的笔记会同步更新。</DialogDescription>
+          </DialogHeader>
+          <form class="flex flex-col gap-4" @submit.prevent="changeTag(editingTag, renamedTag)">
+            <Field>
+              <FieldLabel for="edit-tag-name">标签名称</FieldLabel>
+              <Input id="edit-tag-name" v-model="renamedTag" maxlength="40" />
+            </Field>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                :disabled="tagBusy"
+                @click="editTagOpen = false"
+                >取消</Button
+              >
+              <Button type="submit" :disabled="tagBusy || !renamedTag.trim()">{{
+                tagBusy ? '正在保存…' : '保存'
+              }}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <ScrollArea class="min-h-0 flex-1">
+        <Table>
+          <thead>
+            <tr class="border-b bg-muted/50 text-left text-muted-foreground">
+              <th class="p-3 font-medium">标签名称</th>
+              <th class="p-3 font-medium">笔记数量</th>
+              <th class="p-3 text-right font-medium">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tag in managedTags" :key="tag" class="border-b last:border-b-0">
+              <td class="p-3 font-medium">{{ tag }}</td>
+              <td class="p-3 text-muted-foreground">{{ tagUsage(tag) }} 篇笔记</td>
+              <td class="p-3 text-right">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="重命名标签"
+                  :disabled="tagBusy"
+                  @click="
+                    editingTag = tag;
+                    renamedTag = tag;
+                    editTagOpen = true;
+                  "
+                  ><Pencil
+                /></Button>
+                <ConfirmDialog
+                  title="删除标签？"
+                  :description="`删除“${tag}”将移除所有笔记中的此标签，笔记内容会保留。`"
+                  destructive
+                  @confirm="changeTag(tag, null)"
+                >
+                  <template #trigger
+                    ><Button variant="danger" size="icon" aria-label="删除标签" :disabled="tagBusy"
+                      ><Trash2 /></Button
+                  ></template>
+                </ConfirmDialog>
+              </td>
+            </tr>
+            <tr v-if="!managedTags.length">
+              <td colspan="3" class="p-8 text-center text-muted-foreground">
+                {{ tagSearch ? '没有匹配的标签' : '暂无标签，添加一个开始整理笔记。' }}
+              </td>
+            </tr>
+          </tbody>
+        </Table>
+      </ScrollArea>
     </Card>
     <Tabs v-else-if="current" v-model="mode" class="min-h-0 min-w-0"
       ><Card class="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden p-5">

@@ -161,7 +161,7 @@ defineExpose({ checkUpdate });
     <div>
       <div class="flex flex-col items-start gap-2">
         <div class="flex items-center gap-1">
-          <h2 class="text-2xl font-semibold">Lumo-Hub</h2>
+          <h2 class="text-3xl font-bold">Lumo-Hub</h2>
           <Button variant="ghost" size="icon-sm" aria-label="前往产品主页" @click="openHomepage"
             ><ExternalLink
           /></Button>

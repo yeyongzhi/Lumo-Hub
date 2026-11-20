@@ -169,7 +169,6 @@ watch(
     <Card class="flex min-h-0 flex-col gap-3 overflow-hidden p-3">
       <div class="shrink-0 px-1">
         <p class="text-base font-semibold">我的便签 · 共 {{ store.stickies.length }} 条记录</p>
-        <p class="mt-1 text-xs text-muted-foreground">适合临时记录：置顶常用内容，</p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
         <div class="relative min-w-0 flex-1">

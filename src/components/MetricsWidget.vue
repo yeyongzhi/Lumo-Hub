@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useWorkspaceStore } from '@/stores/workspace';
 const props = defineProps<{ kind: 'disk' | 'cpu' | 'network' }>();
 const store = useWorkspaceStore();
@@ -43,6 +44,12 @@ function bytes(value: number) {
   if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
   if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${Math.round(value)} B`;
+}
+function diskUsedPercent(disk: Disk) {
+  return disk.total > 0 ? Math.max(0, Math.min(100, (1 - disk.available / disk.total) * 100)) : 0;
+}
+function diskLabel(disk: Disk) {
+  return disk.path.match(/^[a-z](?::[\\/]?)?$/i)?.[0][0] ?? disk.path;
 }
 async function openNetwork() {
   try {
@@ -112,20 +119,43 @@ onUnmounted(() => {
       >
     </template>
     <template v-else>
-      <div v-if="metrics.disks.length" class="flex min-h-0 flex-col gap-1 overflow-y-auto">
-        <Button
-          v-for="disk in metrics.disks"
-          :key="disk.path"
-          variant="ghost"
-          class="h-auto min-w-0 justify-between gap-2 px-2 py-1 text-left"
-          :title="`打开 ${disk.path}`"
-          @click="openDisk(disk)"
-          ><span class="min-w-0 truncate">{{ disk.path }}</span
-          ><span class="shrink-0 text-xs text-muted-foreground"
-            >已用 {{ bytes(disk.total - disk.available) }} · 剩余 {{ bytes(disk.available) }}</span
-          ></Button
-        >
-      </div>
+      <ScrollArea v-if="metrics.disks.length" class="h-26 max-h-full min-h-0 w-full">
+        <div class="flex flex-col gap-2 pr-2">
+          <Button
+            v-for="disk in metrics.disks"
+            :key="disk.path"
+            variant="ghost"
+            class="relative h-12 w-full min-w-0 overflow-hidden rounded-lg bg-muted p-0 text-left hover:bg-muted"
+            :title="`打开${diskLabel(disk)}盘`"
+            @click="openDisk(disk)"
+          >
+            <span
+              class="absolute inset-y-0 left-0 bg-primary"
+              :style="{ width: `${diskUsedPercent(disk)}%` }"
+            />
+            <span
+              class="absolute inset-0 flex min-w-0 items-center justify-between gap-2 px-3 text-foreground"
+            >
+              <span class="shrink-0 font-semibold">{{ diskLabel(disk) }}</span>
+              <span class="truncate text-xs tabular-nums"
+                >已用 {{ bytes(Math.max(0, disk.total - disk.available)) }} · 剩余
+                {{ bytes(disk.available) }}</span
+              >
+            </span>
+            <span
+              aria-hidden="true"
+              class="absolute inset-0 flex min-w-0 items-center justify-between gap-2 px-3 text-primary-foreground"
+              :style="{ clipPath: `inset(0 ${100 - diskUsedPercent(disk)}% 0 0)` }"
+            >
+              <span class="shrink-0 font-semibold">{{ diskLabel(disk) }}</span>
+              <span class="truncate text-xs tabular-nums"
+                >已用 {{ bytes(Math.max(0, disk.total - disk.available)) }} · 剩余
+                {{ bytes(disk.available) }}</span
+              >
+            </span>
+          </Button>
+        </div>
+      </ScrollArea>
       <p v-else class="text-sm text-muted-foreground">没有可用磁盘</p>
     </template>
   </div>

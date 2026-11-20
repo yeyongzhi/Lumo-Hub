@@ -17,7 +17,9 @@ import {
 } from '@/lib/confirm';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { Update } from '@tauri-apps/plugin-updater';
 import { exit } from '@tauri-apps/plugin-process';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
@@ -53,6 +55,7 @@ import StickiesPage from '@/views/StickiesPage.vue';
 import { readLocal, writeLocal } from '@/lib/local-files';
 import { api } from '@/lib/api';
 import { watchSystemTheme } from '@/lib/theme';
+import { autoUpdateEnabled, updateInterval } from '@/lib/update-preferences';
 import type { PageId, SearchResult } from '@/lib/types';
 import { useWorkspaceStore } from '@/stores/workspace';
 import {
@@ -77,6 +80,57 @@ function resizeWindow(event: PointerEvent, direction: WindowResizeDirection) {
 }
 
 const store = useWorkspaceStore();
+const newVersion = ref('');
+let updateCheckTimer: ReturnType<typeof setInterval> | undefined;
+let updateCheckInFlight = false;
+let updateCheckGeneration = 0;
+let updateChecksDisposed = false;
+async function checkForUpdatesInBackground() {
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+  const generation = updateCheckGeneration;
+  try {
+    const metadata = await invoke<ConstructorParameters<typeof Update>[0] | null>(
+      'check_app_update',
+    );
+    if (metadata) {
+      const update = new Update(metadata);
+      if (generation === updateCheckGeneration) newVersion.value = update.version;
+      await update.close();
+    } else {
+      if (generation === updateCheckGeneration) newVersion.value = '';
+    }
+  } catch {
+    // A temporary network failure should not interrupt the main window.
+  } finally {
+    updateCheckInFlight = false;
+    if (
+      !updateChecksDisposed &&
+      generation !== updateCheckGeneration &&
+      store.initialized &&
+      autoUpdateEnabled(store.settings.client)
+    )
+      void checkForUpdatesInBackground();
+  }
+}
+watch(
+  [
+    () => store.initialized,
+    () => autoUpdateEnabled(store.settings.client),
+    () => updateInterval(store.settings.client),
+  ],
+  ([initialized, enabled, interval], previous) => {
+    clearInterval(updateCheckTimer);
+    if (!initialized || !enabled) {
+      updateCheckGeneration++;
+      if (!enabled) newVersion.value = '';
+      return;
+    }
+    if (!previous?.[0] || !previous?.[1]) void checkForUpdatesInBackground();
+    updateCheckTimer = setInterval(() => void checkForUpdatesInBackground(), interval * 60 * 1000);
+  },
+  { immediate: true },
+);
 const page = ref<PageId>('home');
 const settingsRequest = ref<{ section: 'about' | 'home'; checkUpdate: boolean; id: number } | null>(
   null,
@@ -446,6 +500,9 @@ onMounted(async () => {
   removeThemeListener = watchSystemTheme(() => store.settings);
 });
 onUnmounted(() => {
+  updateChecksDisposed = true;
+  clearInterval(updateCheckTimer);
+  updateCheckGeneration++;
   window.removeEventListener('keydown', keyboard);
   extraListeners.forEach((unlisten) => unlisten());
   if (searchTimer) clearTimeout(searchTimer);
@@ -653,7 +710,7 @@ onUnmounted(() => {
       @pointerdown="resizeWindow($event, 'SouthEast')"
     />
     <header
-      class="relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border px-6 py-2"
+      class="app-header relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border px-6 py-2"
       @mousedown="startWindowDrag"
     >
       <div class="flex min-w-0 flex-1 items-center gap-2">
@@ -719,6 +776,16 @@ onUnmounted(() => {
             ></DropdownMenu
           >
         </nav>
+        <Button
+          v-if="newVersion"
+          variant="outline"
+          size="sm"
+          class="shrink-0"
+          :title="`新版本：${newVersion}`"
+          tooltip-side="bottom"
+          @click="openAbout(true)"
+          >发现新版本</Button
+        >
       </div>
       <div class="relative flex w-full max-w-xl flex-1 items-center" data-no-drag>
         <Search class="pointer-events-none absolute left-3 size-4 text-muted-foreground" /><Input
@@ -843,7 +910,7 @@ onUnmounted(() => {
     </header>
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <aside
-        class="relative flex shrink-0 flex-col border-r border-border"
+        class="app-sidebar relative flex shrink-0 flex-col border-r border-border"
         :class="sidebarDragWidth === null ? 'transition-[width] duration-200' : 'select-none'"
         :style="{ width: sidebarCollapsed ? '4.5rem' : `${sidebarWidth}px` }"
       >

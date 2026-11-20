@@ -49,6 +49,11 @@ html[data-theme='dark'] {
   --toast-background: rgb(36 36 36 / 98%);
 }
 
+/* Keep the brand swatch intact while ensuring white text on primary surfaces is legible. */
+html[data-accent='brand'] {
+  --primary: #006de0;
+}
+
 [data-sonner-toaster].lumo-sonner {
   z-index: 1000;
 }
@@ -92,6 +97,9 @@ html[data-theme='dark'][data-appearance='glass'] :is(.app-shell, .launch-panel, 
     radial-gradient(ellipse at 10% 5%, rgb(255 255 255 / 16%), transparent 55%),
     radial-gradient(ellipse at 90% 85%, rgb(145 145 145 / 13%), transparent 58%),
     linear-gradient(135deg, rgb(90 90 90 / 16%), rgb(0 0 0 / 12%));
+}
+html[data-theme='dark'][data-appearance='glass'] .app-shell :is(.app-header, .app-sidebar) {
+  background-color: var(--card);
 }
 
 @theme inline {

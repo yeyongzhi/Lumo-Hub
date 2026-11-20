@@ -81,6 +81,7 @@ export type HomeWidgetKind =
   | 'hardware'
   | 'memory'
   | 'calendar'
+  | 'progress'
   | 'time';
 export type HomeWidgetSize = '1x1' | '2x1' | '1x2' | '2x2' | '4x1';
 export interface HomeWidget {

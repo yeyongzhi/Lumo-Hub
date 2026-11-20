@@ -20,10 +20,7 @@ export function applySettings(settings: AppSettings) {
   root.dataset.appearance = settings.appearance_mode ?? 'glass';
   root.dataset.accent = settings.accent;
   root.style.setProperty('--accent-color', accents[settings.accent] ?? accents.blue);
-  root.style.setProperty(
-    '--primary-foreground',
-    settings.accent === 'brand' ? '#000' : 'oklch(1 0 0)',
-  );
+  root.style.setProperty('--primary-foreground', 'oklch(1 0 0)');
   root.style.setProperty('--radius', `${settings.border_radius ?? 16}px`);
   root.style.fontSize = `${settings.font_size}px`;
 }

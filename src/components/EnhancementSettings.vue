@@ -354,7 +354,7 @@ function onShortcutWindowBlur() {
   document.querySelector<HTMLInputElement>('#launcher-shortcut')?.blur();
   endShortcutCapture();
 }
-async function desktopOption(key: 'close_to_tray' | 'autostart', value: boolean) {
+async function desktopOption(key: 'autostart', value: boolean) {
   try {
     await store.setSetting('product', { ...store.settings.product, [key]: value });
   } catch (e) {
@@ -545,19 +545,6 @@ function date(value: string | null) {
   <div v-if="props.section === 'launcher' || props.section === 'all'" class="flex flex-col gap-6">
     <FieldGroup
       ><Field
-        ><div>
-          <FieldLabel class="text-base font-semibold" for="close-to-tray"
-            >关闭窗口后留在托盘</FieldLabel
-          ><FieldDescription>快捷启动和日期提醒继续工作，可从托盘菜单退出。</FieldDescription>
-        </div>
-        <div class="flex items-center">
-          <Switch
-            id="close-to-tray"
-            :model-value="store.settings.product.close_to_tray"
-            @update:model-value="(value) => desktopOption('close_to_tray', value)"
-          /></div
-      ></Field>
-      <Field
         ><FieldLabel class="text-base font-semibold" for="autostart">开机启动</FieldLabel>
         <div class="flex items-center">
           <Switch

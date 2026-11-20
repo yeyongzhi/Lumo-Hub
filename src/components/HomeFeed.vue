@@ -13,9 +13,18 @@ const emit = defineEmits<{
   updated: [value: string];
   loading: [value: boolean];
   status: [value: string];
+  copyText: [value: string];
 }>();
 const data = ref<FeedData | null>(null);
 watch(data, (value) => emit('metadata', value?.date || ''));
+watch(
+  data,
+  (value) => {
+    const source = [value?.author, value?.source].filter(Boolean).join(' · ');
+    emit('copyText', value?.content ? [value.content, source].filter(Boolean).join('\n') : '');
+  },
+  { immediate: true },
+);
 const loading = ref(false),
   error = ref(''),
   city = ref(''),

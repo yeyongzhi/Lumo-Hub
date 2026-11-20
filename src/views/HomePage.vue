@@ -4,6 +4,7 @@ import HomeWidgetFrame from '@/components/HomeWidgetFrame.vue';
 import SystemWidget from '@/components/SystemWidget.vue';
 import MetricsWidget from '@/components/MetricsWidget.vue';
 import ClipboardWidget from '@/components/ClipboardWidget.vue';
+import TimeProgressWidget from '@/components/TimeProgressWidget.vue';
 import { builtinTools, openTool } from '@/lib/tools';
 import { resourceImage } from '@/lib/library-preferences';
 import {
@@ -55,6 +56,7 @@ import {
   Wrench,
   ChevronLeft,
   ChevronRight,
+  Copy,
 } from '@lucide/vue';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -516,12 +518,23 @@ const moduleIcons = {
   hardware: Cpu,
   memory: MemoryStick,
   calendar: CalendarDays,
+  progress: CalendarDays,
   time: Clock3,
 };
 function isOnline(kind: HomeWidgetKind): kind is FeedKind {
   return ['weather', 'hitokoto', 'news', 'poetry'].includes(kind);
 }
 const feedUpdates = ref<Record<string, string>>({});
+const feedCopyText = ref<Record<string, string>>({});
+async function copyFeed(id: string) {
+  if (!feedCopyText.value[id]) return;
+  try {
+    await navigator.clipboard.writeText(feedCopyText.value[id]);
+    store.notify('已复制内容和来源');
+  } catch (error) {
+    store.notify(`复制失败：${String(error)}`);
+  }
+}
 const feedStatuses = ref<Record<string, string>>({});
 const feedLoading = ref<Record<string, boolean>>({});
 const refreshKeys = ref<Record<FeedKind, number>>({ weather: 0, hitokoto: 0, news: 0, poetry: 0 });
@@ -567,7 +580,7 @@ function createModule(kind: HomeWidgetKind): HomeWidget {
     kind,
     size: fixedWidgetSize(kind)
       ? '1x1'
-      : ['news', 'calendar'].includes(kind)
+      : ['news', 'calendar', 'progress'].includes(kind)
         ? '2x2'
         : [
               'recent',
@@ -1380,6 +1393,15 @@ async function saveLayout() {
                 @click="emit('navigate', modulePages[widget.kind]!)"
                 ><ArrowUpRight
               /></Button>
+              <Button
+                v-if="['hitokoto', 'poetry'].includes(widget.kind)"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="复制"
+                :disabled="!feedCopyText[widget.id]"
+                @click="copyFeed(widget.id)"
+                ><Copy
+              /></Button>
             </div>
           </div>
           <div
@@ -1404,6 +1426,7 @@ async function saveLayout() {
                 :size="widget.size"
                 :refresh-key="refreshKeys[widget.kind]"
                 @updated="(value) => (feedUpdates[widget.id] = value)"
+                @copy-text="(value) => (feedCopyText[widget.id] = value)"
                 @metadata="
                   (value) => {
                     if (widget.kind === 'news') newsDate = value;
@@ -1412,6 +1435,11 @@ async function saveLayout() {
                 @loading="(value) => (feedLoading[widget.id] = value)"
                 @status="(value) => (feedStatuses[widget.id] = value)"
               /><ClockWidget v-else-if="widget.kind === 'clock'" :size="widget.size" />
+              <TimeProgressWidget
+                v-else-if="widget.kind === 'progress'"
+                :now="now"
+                :compact="widget.size === '1x1'"
+              />
               <template v-else-if="widget.kind === 'time'"
                 ><div class="flex min-h-0 flex-1 items-center justify-center">
                   <p

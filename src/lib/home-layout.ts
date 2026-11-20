@@ -20,6 +20,7 @@ export const widgetNames: Record<HomeWidgetKind, string> = {
   hardware: '电脑硬件',
   memory: '内存占用',
   calendar: '日历',
+  progress: '时间进度',
   time: '时间',
 };
 export const fixedWidgetSize = (kind: HomeWidgetKind) => kind === 'poetry' || kind === 'hitokoto';

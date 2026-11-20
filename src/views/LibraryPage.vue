@@ -719,6 +719,34 @@ const scanCategory = ref('all');
 const scanQuery = ref('');
 const showImported = ref(false);
 const resourceHealth = ref<Record<string, boolean>>({});
+const invalidResources = computed(() =>
+  store.resources.filter((item) => resourceHealth.value[item.id] === false),
+);
+const cleanupOpen = ref(false);
+const cleanupBusy = ref(false);
+const cleanupItems = ref<Resource[]>([]);
+function openCleanup() {
+  cleanupItems.value = invalidResources.value.map((item) => ({ ...item }));
+  cleanupOpen.value = true;
+}
+async function cleanupInvalidResources() {
+  if (cleanupBusy.value || !cleanupItems.value.length) return;
+  cleanupBusy.value = true;
+  try {
+    await api.batchResources(
+      cleanupItems.value.map((item) => item.id),
+      'delete',
+      null,
+    );
+    await store.reloadResources();
+    cleanupOpen.value = false;
+    store.notify(`已清理 ${cleanupItems.value.length} 个路径失效的启动项`);
+  } catch (e) {
+    store.notify(`清理失败：${String(e)}`);
+  } finally {
+    cleanupBusy.value = false;
+  }
+}
 watch(
   () => store.resources.map((item) => item.id + item.target).join('|'),
   async () => {
@@ -1797,14 +1825,26 @@ function iconFor(kind: ResourceKind) {
                 >保存并退出</Button
               >
             </div>
-            <h2
-              v-if="
-                !batchMode && shownCommon.length && shownResources.length && activeFilter === 'all'
-              "
-              class="text-xs font-medium text-muted-foreground"
+            <div
+              v-if="!batchMode && (shownResources.length || invalidResources.length)"
+              class="flex items-center justify-between gap-2"
             >
-              我的启动项 · {{ shownResources.length }}
-            </h2>
+              <h2
+                v-if="shownCommon.length && shownResources.length && activeFilter === 'all'"
+                class="text-xs font-medium text-muted-foreground"
+              >
+                我的启动项 · {{ shownResources.length }}
+              </h2>
+              <Button
+                v-if="invalidResources.length"
+                class="ml-auto"
+                size="sm"
+                variant="outline"
+                @click="openCleanup"
+              >
+                <Trash2 />清理失效启动项（{{ invalidResources.length }}）
+              </Button>
+            </div>
             <p role="status" class="sr-only">
               {{ draggingTile ? '拖动中，松手保存位置，按 Escape 取消。' : '' }}
             </p>
@@ -2093,6 +2133,32 @@ function iconFor(kind: ResourceKind) {
       </div></DialogContent
     ></Dialog
   >
+  <Dialog v-model:open="cleanupOpen">
+    <DialogContent
+      class="flex max-h-[85dvh] flex-col sm:max-w-xl"
+      :show-close-button="!cleanupBusy"
+    >
+      <DialogHeader>
+        <DialogTitle>清理路径失效的启动项</DialogTitle>
+        <DialogDescription
+          >将从应用库移除以下
+          {{ cleanupItems.length }} 个启动项，不会删除电脑中的原始程序或文件。</DialogDescription
+        >
+      </DialogHeader>
+      <div class="min-h-0 overflow-y-auto rounded-md border">
+        <div v-for="item in cleanupItems" :key="item.id" class="border-b p-3 last:border-b-0">
+          <p class="text-sm font-medium">{{ item.name }}</p>
+          <p class="mt-1 break-all text-xs text-muted-foreground">{{ item.target }}</p>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" :disabled="cleanupBusy" @click="cleanupOpen = false">取消</Button>
+        <Button variant="danger" :disabled="cleanupBusy" @click="cleanupInvalidResources">{{
+          cleanupBusy ? '正在清理…' : '确认清理'
+        }}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
   <ConfirmDialog
     v-model:open="deleteBatch"
     title="移除所选启动项？"
