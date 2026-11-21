@@ -395,6 +395,16 @@ function startWindowDrag(event: MouseEvent) {
     .startDragging()
     .catch(() => {});
 }
+function toggleWindowMaximize(event: MouseEvent) {
+  if (
+    event.button !== 0 ||
+    (event.target as HTMLElement).closest('button,input,textarea,select,a,[data-no-drag]')
+  )
+    return;
+  void getCurrentWindow()
+    .toggleMaximize()
+    .catch(() => {});
+}
 async function runCleanUninstall() {
   try {
     await api.cleanUninstall();
@@ -562,7 +572,11 @@ onUnmounted(() => {
     v-if="!store.initialized"
     class="relative flex min-h-screen items-center justify-center bg-background"
   >
-    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <div
+      class="absolute inset-x-0 top-0 h-12"
+      @mousedown="startWindowDrag"
+      @dblclick="toggleWindowMaximize"
+    ></div>
     <WindowControls class="absolute right-4 top-3" />
     <div class="flex items-center gap-3 text-sm text-muted-foreground">
       <span class="size-2 animate-pulse rounded-full bg-primary"></span>正在打开 Lumo-Hub…
@@ -572,7 +586,11 @@ onUnmounted(() => {
     v-else-if="store.startupError"
     class="relative flex min-h-screen items-center justify-center bg-background p-8"
   >
-    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <div
+      class="absolute inset-x-0 top-0 h-12"
+      @mousedown="startWindowDrag"
+      @dblclick="toggleWindowMaximize"
+    ></div>
     <WindowControls class="absolute right-4 top-3" />
     <Card class="max-w-xl p-8"
       ><h1 class="text-xl font-semibold">无法读取本地数据</h1>
@@ -587,7 +605,11 @@ onUnmounted(() => {
     v-else-if="store.recoveryError"
     class="relative flex min-h-screen items-center justify-center bg-background p-8"
   >
-    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <div
+      class="absolute inset-x-0 top-0 h-12"
+      @mousedown="startWindowDrag"
+      @dblclick="toggleWindowMaximize"
+    ></div>
     <WindowControls class="absolute right-4 top-3" />
     <Card class="w-full max-w-2xl p-8">
       <h1 class="text-2xl font-semibold">需要恢复数据目录</h1>
@@ -610,7 +632,11 @@ onUnmounted(() => {
     v-else-if="store.cleanUninstall"
     class="relative flex min-h-screen items-center justify-center bg-background p-8"
   >
-    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <div
+      class="absolute inset-x-0 top-0 h-12"
+      @mousedown="startWindowDrag"
+      @dblclick="toggleWindowMaximize"
+    ></div>
     <WindowControls class="absolute right-4 top-3" />
     <Card class="w-full max-w-xl p-8">
       <div
@@ -646,7 +672,11 @@ onUnmounted(() => {
     v-else-if="!store.settings.welcome_completed"
     class="relative flex min-h-screen items-center justify-center bg-background p-8"
   >
-    <div class="absolute inset-x-0 top-0 h-12" @mousedown="startWindowDrag"></div>
+    <div
+      class="absolute inset-x-0 top-0 h-12"
+      @mousedown="startWindowDrag"
+      @dblclick="toggleWindowMaximize"
+    ></div>
     <WindowControls class="absolute right-4 top-3" />
     <Card class="flex w-full max-w-2xl flex-col items-center p-12 text-center">
       <img src="/brand/lumohub.png" alt="LumoHub" class="mb-7 size-20 shrink-0 object-contain" />
@@ -712,6 +742,7 @@ onUnmounted(() => {
     <header
       class="app-header relative z-20 flex min-h-14 shrink-0 items-center gap-4 border-b border-border px-6 py-2"
       @mousedown="startWindowDrag"
+      @dblclick="toggleWindowMaximize"
     >
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <div class="flex items-center pr-2">

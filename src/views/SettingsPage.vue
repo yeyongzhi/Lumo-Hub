@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui/field';
-import { computed, nextTick, ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import {
   CircleHelp,
   Database,
@@ -42,6 +42,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Slider } from '@/components/ui/slider';
 import { autoUpdateEnabled, updateInterval, updateIntervals } from '@/lib/update-preferences';
 import {
   libraryColumnOptions,
@@ -97,16 +98,14 @@ const settingsMenu = [
   { id: 'trash', label: '回收站', icon: Trash2 },
   { id: 'about', label: '关于', icon: CircleHelp },
 ];
-const fontSizes = computed(() =>
-  [...new Set([12, 14, 16, 18, 20, 24, store.settings.font_size])].sort((a, b) => a - b),
-);
+const fontSizes = [12, 14, 16, 18, 20, 22, 24];
 const radii = [
-  { value: 0, label: '直角 · 0' },
-  { value: 4, label: '微圆角 · 4' },
-  { value: 8, label: '小圆角 · 8' },
-  { value: 12, label: '中圆角 · 12' },
-  { value: 16, label: '大圆角 · 16（默认）' },
-  { value: 24, label: '超大圆角 · 24' },
+  { value: 0, label: '直角' },
+  { value: 4, label: '微圆角' },
+  { value: 8, label: '小圆角' },
+  { value: 12, label: '中圆角' },
+  { value: 16, label: '大圆角（默认）' },
+  { value: 24, label: '超大圆角' },
 ];
 const modes = [
   { id: 'light', label: '浅色', icon: Sun },
@@ -421,24 +420,35 @@ async function restoreBackup() {
                     >统一调整卡片、按钮、输入框和弹窗的圆角。</FieldDescription
                   ></Field
                 >
-                <Field
-                  ><FieldLabel class="text-base font-semibold" for="global-font-size"
+                <Field>
+                  <FieldLabel class="text-base font-semibold" for="global-font-size"
                     >全局字体大小</FieldLabel
-                  ><Tabs
-                    :model-value="String(store.settings.font_size)"
-                    @update:model-value="setFont"
-                    ><TabsList
+                  >
+                  <div class="flex w-full max-w-xl items-center gap-4">
+                    <Slider
                       id="global-font-size"
                       aria-label="全局字体大小"
-                      class="h-auto max-w-full flex-wrap justify-start"
-                      ><TabsTrigger v-for="size in fontSizes" :key="size" :value="String(size)"
-                        >{{ size }}{{ size === 14 ? '（默认）' : '' }}</TabsTrigger
-                      ></TabsList
-                    ></Tabs
-                  ><FieldDescription
-                    >选择适合阅读的字号，整个应用立即更新。</FieldDescription
-                  ></Field
-                >
+                      :model-value="[store.settings.font_size]"
+                      :min="12"
+                      :max="24"
+                      :step="2"
+                      class="flex-1"
+                      @update:model-value="(value) => value?.[0] && setFont(value[0])"
+                    />
+                    <output class="w-10 text-right text-sm tabular-nums"
+                      >{{ store.settings.font_size }}px</output
+                    >
+                  </div>
+                  <div
+                    class="flex w-full max-w-xl justify-between px-2 text-xs text-muted-foreground"
+                    aria-hidden="true"
+                  >
+                    <span v-for="size in fontSizes" :key="size" class="text-center">
+                      {{ size }}<span v-if="size === 14"> 默认</span>
+                    </span>
+                  </div>
+                  <FieldDescription>拖动滑块调整字号，整个应用立即更新。</FieldDescription>
+                </Field>
               </FieldGroup>
             </div>
           </div>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, shallowRef } from 'vue';
-import { CalendarDays } from '@lucide/vue';
+import { CalendarDays, Clock3 } from '@lucide/vue';
 import { DateFormatter, getLocalTimeZone, today, type DateValue } from '@internationalized/date';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
 import { useToastMessage } from '@/lib/toast-message';
 const now = ref(Date.now()),
   stamp = ref(''),
@@ -67,68 +68,74 @@ async function copy(value: string) {
 <template>
   <div class="flex flex-col gap-6">
     <section class="flex items-center gap-3 rounded-xl border bg-card p-4">
+      <Clock3 class="size-5 shrink-0 text-primary" aria-hidden="true" />
       <div class="flex-1">
         <p class="text-xs text-muted-foreground">当前 Unix 时间戳（秒）</p>
         <p class="mt-2 font-mono text-2xl">{{ current }}</p>
       </div>
       <Button variant="outline" @click="copy(current)">复制</Button>
     </section>
-    <FieldGroup class="grid grid-cols-2 items-start"
-      ><Field
-        ><FieldLabel for="timestamp">时间戳 → 日期</FieldLabel
-        ><Tabs v-model="unit"
-          ><TabsList
-            ><TabsTrigger value="seconds">秒</TabsTrigger
-            ><TabsTrigger value="milliseconds">毫秒</TabsTrigger></TabsList
-          ></Tabs
-        ><Input id="timestamp" v-model="stamp" placeholder="输入时间戳" @keydown.enter="toDate" />
-        <div class="flex gap-2">
-          <Button @click="toDate">转换日期</Button
-          ><Button
-            variant="outline"
-            @click="
-              stamp = String(unit === 'seconds' ? Math.floor(now / 1000) : now);
-              toDate();
-            "
-            >填入当前时间</Button
-          >
-        </div>
-        <pre v-if="result" class="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{{
-          result
-        }}</pre>
-        <Button v-if="result" variant="outline" class="self-start" @click="copy(result)"
-          >复制结果</Button
-        ></Field
-      ><Field
-        ><FieldLabel for="date">本地日期 → 时间戳</FieldLabel>
-        <div class="grid gap-3 sm:grid-cols-2">
-          <Popover v-model:open="datePickerOpen"
-            ><PopoverTrigger as-child
-              ><Button
-                id="date"
-                variant="outline"
-                class="w-full justify-start"
-                aria-label="选择日期"
-                ><CalendarDays data-icon="inline-start" />{{ dateLabel }}</Button
-              ></PopoverTrigger
-            ><PopoverContent class="w-auto p-0" align="start"
-              ><Calendar
-                :model-value="date"
-                :default-placeholder="date ?? defaultDate"
-                locale="zh-CN"
-                layout="month-and-year"
-                initial-focus
-                @update:model-value="selectDate" /></PopoverContent></Popover
-          ><Input id="time" v-model="time" type="time" step="1" aria-label="本地时间（时分秒）" />
-        </div>
-        <Button class="self-start" @click="toStamp">转换时间戳</Button>
-        <pre v-if="dateResult" class="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{{
-          dateResult
-        }}</pre>
-        <Button v-if="dateResult" variant="outline" class="self-start" @click="copy(dateResult)"
-          >复制结果</Button
-        ></Field
-      ></FieldGroup
-    >
+    <FieldGroup class="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+      <Card class="min-w-0 gap-4 p-4 shadow-none">
+        <Field
+          ><FieldLabel for="timestamp">时间戳 → 日期</FieldLabel
+          ><Tabs v-model="unit"
+            ><TabsList
+              ><TabsTrigger value="seconds">秒</TabsTrigger
+              ><TabsTrigger value="milliseconds">毫秒</TabsTrigger></TabsList
+            ></Tabs
+          ><Input id="timestamp" v-model="stamp" placeholder="输入时间戳" @keydown.enter="toDate" />
+          <div class="flex gap-2">
+            <Button @click="toDate">转换日期</Button
+            ><Button
+              variant="outline"
+              @click="
+                stamp = String(unit === 'seconds' ? Math.floor(now / 1000) : now);
+                toDate();
+              "
+              >填入当前时间</Button
+            >
+          </div>
+          <pre v-if="result" class="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{{
+            result
+          }}</pre>
+          <Button v-if="result" variant="outline" class="self-start" @click="copy(result)"
+            >复制结果</Button
+          ></Field
+        >
+      </Card>
+      <Card class="min-w-0 gap-4 p-4 shadow-none">
+        <Field
+          ><FieldLabel for="date">本地日期 → 时间戳</FieldLabel>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <Popover v-model:open="datePickerOpen"
+              ><PopoverTrigger as-child
+                ><Button
+                  id="date"
+                  variant="outline"
+                  class="w-full justify-start"
+                  aria-label="选择日期"
+                  ><CalendarDays data-icon="inline-start" />{{ dateLabel }}</Button
+                ></PopoverTrigger
+              ><PopoverContent class="w-auto p-0" align="start"
+                ><Calendar
+                  :model-value="date"
+                  :default-placeholder="date ?? defaultDate"
+                  locale="zh-CN"
+                  layout="month-and-year"
+                  initial-focus
+                  @update:model-value="selectDate" /></PopoverContent></Popover
+            ><Input id="time" v-model="time" type="time" step="1" aria-label="本地时间（时分秒）" />
+          </div>
+          <Button class="self-start" @click="toStamp">转换时间戳</Button>
+          <pre v-if="dateResult" class="whitespace-pre-wrap rounded-lg bg-muted p-3 text-sm">{{
+            dateResult
+          }}</pre>
+          <Button v-if="dateResult" variant="outline" class="self-start" @click="copy(dateResult)"
+            >复制结果</Button
+          ></Field
+        >
+      </Card>
+    </FieldGroup>
   </div>
 </template>

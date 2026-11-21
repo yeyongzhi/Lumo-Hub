@@ -5,11 +5,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToastMessage } from '@/lib/toast-message';
 
 type Mode = 'pomodoro' | 'countdown' | 'stopwatch';
 const mode = ref<Mode>('pomodoro');
 const phase = ref<'focus' | 'break'>('focus');
+const focusMinutes = ref(25);
+const breakMinutes = ref(5);
 const minutes = ref<number | string>(5);
 const seconds = ref<number | string>(0);
 const started = ref(false);
@@ -23,7 +32,8 @@ let ticker: ReturnType<typeof setInterval> | undefined;
 
 const countingDown = computed(() => mode.value !== 'stopwatch');
 const duration = computed(() => {
-  if (mode.value === 'pomodoro') return (phase.value === 'focus' ? 25 : 5) * 60_000;
+  if (mode.value === 'pomodoro')
+    return (phase.value === 'focus' ? focusMinutes.value : breakMinutes.value) * 60_000;
   const min = Number(minutes.value);
   const sec = Number(seconds.value);
   if (
@@ -98,9 +108,18 @@ function changeMode(value: unknown) {
   mode.value = value;
   phase.value = 'focus';
 }
-function switchPhase() {
+function changePhase(value: unknown) {
+  if (value !== 'focus' && value !== 'break') return;
+  if (value === phase.value) return;
   reset();
-  phase.value = phase.value === 'focus' ? 'break' : 'focus';
+  phase.value = value;
+}
+function changePomodoroDuration(value: unknown) {
+  const duration = Number(value);
+  if (![5, 10, 15, 20, 25, 30, 45, 60].includes(duration)) return;
+  reset();
+  if (phase.value === 'focus') focusMinutes.value = duration;
+  else breakMinutes.value = duration;
 }
 onUnmounted(stopTicker);
 </script>
@@ -115,13 +134,34 @@ onUnmounted(stopTicker);
       </TabsList>
     </Tabs>
     <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 text-center">
-      <div v-if="mode === 'pomodoro'" class="flex items-center gap-3">
-        <span class="text-sm text-muted-foreground">{{
-          phase === 'focus' ? '专注 · 25 分钟' : '休息 · 5 分钟'
-        }}</span>
-        <Button variant="outline" size="sm" :disabled="running" @click="switchPhase">
-          {{ phase === 'focus' ? '切换到休息' : '切换到专注' }}
-        </Button>
+      <div v-if="mode === 'pomodoro'" class="flex items-center gap-2">
+        <Select :model-value="phase" :disabled="running" @update:model-value="changePhase">
+          <SelectTrigger class="w-32" aria-label="选择专注或休息">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="focus">专注一下</SelectItem>
+            <SelectItem value="break">休息一下</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          :model-value="String(phase === 'focus' ? focusMinutes : breakMinutes)"
+          :disabled="running"
+          @update:model-value="changePomodoroDuration"
+        >
+          <SelectTrigger class="w-28" aria-label="选择快捷时长">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="value in [5, 10, 15, 20, 25, 30, 45, 60]"
+              :key="value"
+              :value="String(value)"
+            >
+              {{ value }} 分钟
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div
         v-else-if="mode === 'countdown'"

@@ -22,7 +22,7 @@ pub async fn open_builtin_tool(app: tauri::AppHandle, id: String) -> Result<(), 
         "timestamp" => ("时间戳工具", 800., 560.),
         "json" => ("JSON 工具", 800., 540.),
         "diff" => ("文本对比", 820., 620.),
-        "timer" => ("番茄钟 / 计时器", 480., 430.),
+        "timer" => ("番茄钟 / 计时器", 400., 340.),
         "units" => ("单位换算", 560., 400.),
         _ => return Err("未知工具".into()),
     };
@@ -32,7 +32,8 @@ pub async fn open_builtin_tool(app: tauri::AppHandle, id: String) -> Result<(), 
     tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(format!("index.html?tool={id}").into()))
         .title(title)
         .inner_size(width, height)
-        .min_inner_size(width, height)
+        .min_inner_size(if floating { 280.0 } else { width }, if floating { 180.0 } else { height })
+        .resizable(floating)
         .decorations(false)
         .transparent(true)
         .background_color(tauri::webview::Color(0, 0, 0, 0))

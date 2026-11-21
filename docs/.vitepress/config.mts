@@ -20,7 +20,8 @@ export default defineConfig({
       { text: '更新日志', link: '/changelog' },
       { text: '开发文档', items: [
         { text: '开发说明书', link: '/开发说明书' },
-        { text: '技术方案', link: '/技术方案' }
+        { text: '技术方案', link: '/技术方案' },
+        { text: '更新检测逻辑', link: '/更新检测逻辑' }
       ] },
       { text: 'GitHub', link: 'https://github.com/yeyongzhi/Lumo-Hub' }
     ],
@@ -32,7 +33,8 @@ export default defineConfig({
       ] },
       { text: '开发文档', items: [
         { text: '开发说明书', link: '/开发说明书' },
-        { text: '技术方案', link: '/技术方案' }
+        { text: '技术方案', link: '/技术方案' },
+        { text: '更新检测逻辑', link: '/更新检测逻辑' }
       ] }
     ],
     outline: { label: '本页目录', level: [2, 3] },

@@ -8,7 +8,7 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 [产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
-> 当前代码版本：**0.0.1-beta.13（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.14（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
 
 [查看最新测试版及全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
