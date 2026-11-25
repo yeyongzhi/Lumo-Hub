@@ -5,6 +5,7 @@ mod library_tools;
 mod local_files;
 mod note_files;
 mod desktop;
+mod desktop_cards;
 mod reminders;
 mod notifications;
 mod home_feeds;
@@ -47,11 +48,14 @@ pub struct AppState {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // 登录自启触发的第二个实例保持静默，不把主面板拉到前台。
+            if argv.iter().any(|arg| arg == "--autostart") { return; }
             let minimal=app.try_state::<AppState>().and_then(|state|state.settings.lock().ok().map(|s|s.launcher.minimal_mode)).unwrap_or(false);
             if minimal && !argv.iter().any(|arg|arg=="--clean-uninstall") {
                 let app=app.clone(); tauri::async_runtime::spawn_blocking(move||{let _=launcher::show(&app);});
-            } else if let Some(window)=app.get_webview_window("main") {
-                let _=window.unminimize(); let _=window.show(); let _=window.set_focus();
+            } else if let Some(_window)=app.get_webview_window("main") {
+                // 复用托盘「打开 Lumo」的逻辑：自启动后的首次打开会一并恢复窗口位置与最大化状态。
+                crate::desktop::show_main(app);
             }
             if argv.iter().any(|arg| arg == "--clean-uninstall") {
                 if let Some(state) = app.try_state::<AppState>() {
@@ -110,21 +114,27 @@ pub fn run() {
                     )
                 }
             };
-            app.manage(AppState {
-                db: Mutex::new(connection),
-                data_dir: Mutex::new(paths.data_dir.clone()),
-                data_operation: Mutex::new(()),
-                clean_uninstall_requested: AtomicBool::new(false),
-                recovery_error: Mutex::new(recovery_error),
-                paths,
-                settings: Mutex::new(settings),
-                shortcut_error: Mutex::new(None), shortcut_capture: Mutex::new(None), backup_error: Mutex::new(None),
-            });
+    app.manage(AppState {
+        db: Mutex::new(connection),
+        data_dir: Mutex::new(paths.data_dir.clone()),
+        data_operation: Mutex::new(()),
+        clean_uninstall_requested: AtomicBool::new(false),
+        recovery_error: Mutex::new(recovery_error),
+        paths,
+        settings: Mutex::new(settings),
+        shortcut_error: Mutex::new(None), shortcut_capture: Mutex::new(None), backup_error: Mutex::new(None),
+    });
             app.manage(home_metrics::MetricsState::default());
             builtin_tools::start(app.handle().clone());
             desktop::setup(app.handle()).map_err(std::io::Error::other)?;
+            // 旧版本写入的自启动命令不带 --autostart，升级后统一重写一次。
+            if app.try_state::<AppState>().is_some_and(|state| state.settings.lock().map(|s| s.product.autostart).unwrap_or(false)) {
+                let _ = desktop::autostart(true);
+            }
             reminders::start(app.handle().clone());
             automatic_backup::start(app.handle().clone());
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move { if let Err(error) = desktop_cards::sync_windows(&handle).await { let _ = handle.emit("lumo-cards-error", error); } });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -188,6 +198,31 @@ pub fn run() {
             commands::restore_default_data_directory,
             backup::export_backup,
             backup::restore_backup,
+            desktop_cards::desktop_cards_list,
+            desktop_cards::desktop_cards_create,
+            desktop_cards::desktop_cards_rename,
+            desktop_cards::desktop_cards_update_identity,
+            desktop_cards::desktop_cards_set_locked,
+            desktop_cards::desktop_cards_delete,
+            desktop_cards::desktop_cards_add_items,
+            desktop_cards::desktop_cards_drop_items,
+            desktop_cards::desktop_cards_remove_item,
+            desktop_cards::desktop_cards_relocate_item,
+            desktop_cards::desktop_cards_open_item,
+            desktop_cards::desktop_cards_reveal_item,
+            desktop_cards::desktop_cards_reveal_original,
+            desktop_cards::desktop_cards_move_items,
+            desktop_cards::desktop_cards_save_geometry,
+            desktop_cards::desktop_cards_avoid_overlap,
+            desktop_cards::desktop_cards_reset_position,
+            desktop_cards::desktop_cards_set_style,
+            desktop_cards::desktop_cards_set_visibility,
+            desktop_cards::desktop_cards_set_geometry,
+            desktop_cards::desktop_cards_reorder,
+            desktop_cards::desktop_cards_reorder_items,
+            desktop_cards::desktop_cards_open_storage_folder,
+            desktop_cards::desktop_cards_set_interactive,
+            desktop_cards::desktop_cards_sync,
         ])
         .run(tauri::generate_context!())
         .expect("Lumo-Hub 启动失败");

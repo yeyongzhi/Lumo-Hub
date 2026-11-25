@@ -29,6 +29,7 @@ import {
   ChevronRight,
   CircleHelp,
   House,
+  LayoutGrid,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -46,7 +47,9 @@ import { Card } from '@/components/ui/card';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import WindowControls from '@/components/WindowControls.vue';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import CountdownsPage from '@/views/CountdownsPage.vue';
+import DesktopCardsPage from '@/views/DesktopCardsPage.vue';
 import HomePage from '@/views/HomePage.vue';
 import LibraryPage from '@/views/LibraryPage.vue';
 import NotesPage from '@/views/NotesPage.vue';
@@ -55,7 +58,7 @@ import StickiesPage from '@/views/StickiesPage.vue';
 import { readLocal, writeLocal } from '@/lib/local-files';
 import { api } from '@/lib/api';
 import { watchSystemTheme } from '@/lib/theme';
-import { autoUpdateEnabled, updateInterval } from '@/lib/update-preferences';
+import { autoDownloadEnabled, autoUpdateEnabled, updateInterval } from '@/lib/update-preferences';
 import type { PageId, SearchResult } from '@/lib/types';
 import { useWorkspaceStore } from '@/stores/workspace';
 import {
@@ -81,53 +84,129 @@ function resizeWindow(event: PointerEvent, direction: WindowResizeDirection) {
 
 const store = useWorkspaceStore();
 const newVersion = ref('');
-let updateCheckTimer: ReturnType<typeof setInterval> | undefined;
+const detectedVersion = ref('');
+const downloadProgress = ref<number | null>(null);
+const downloadingUpdate = ref(false);
+const updateInstallPrompt = ref(false);
+let downloadedUpdate: Update | null = null;
+const installingUpdate = ref(false);
+let updateCheckTimer: ReturnType<typeof setTimeout> | undefined;
 let updateCheckInFlight = false;
 let updateCheckGeneration = 0;
 let updateChecksDisposed = false;
+
+async function clearDownloadedUpdate() {
+  const previous = downloadedUpdate;
+  downloadedUpdate = null;
+  newVersion.value = '';
+  detectedVersion.value = '';
+  updateInstallPrompt.value = false;
+  if (previous) await previous.close().catch(() => {});
+}
+
 async function checkForUpdatesInBackground() {
   if (updateCheckInFlight) return;
   updateCheckInFlight = true;
   const generation = updateCheckGeneration;
+  let candidate: Update | null = null;
   try {
     const metadata = await invoke<ConstructorParameters<typeof Update>[0] | null>(
       'check_app_update',
     );
-    if (metadata) {
-      const update = new Update(metadata);
-      if (generation === updateCheckGeneration) newVersion.value = update.version;
-      await update.close();
-    } else {
-      if (generation === updateCheckGeneration) newVersion.value = '';
+    if (!metadata) {
+      if (generation === updateCheckGeneration) await clearDownloadedUpdate();
+      return;
     }
+    candidate = new Update(metadata);
+    if (generation !== updateCheckGeneration || updateChecksDisposed) return;
+    detectedVersion.value = candidate.version;
+    if (downloadedUpdate?.version === candidate.version) return;
+    if (!autoDownloadEnabled(store.settings.client)) return;
+    downloadingUpdate.value = true;
+    downloadProgress.value = null;
+    let received = 0;
+    let total = 0;
+    await candidate.download((event) => {
+      if (generation !== updateCheckGeneration) return;
+      if (event.event === 'Started') total = event.data.contentLength ?? 0;
+      if (event.event === 'Progress') {
+        received += event.data.chunkLength;
+        if (total > 0) downloadProgress.value = Math.min(100, Math.round((received / total) * 100));
+      }
+    });
+    if (generation !== updateCheckGeneration || updateChecksDisposed) return;
+    const previous = downloadedUpdate;
+    downloadedUpdate = candidate;
+    candidate = null;
+    newVersion.value = downloadedUpdate.version;
+    updateInstallPrompt.value = true;
+    if (previous) await previous.close().catch(() => {});
   } catch {
-    // A temporary network failure should not interrupt the main window.
+    // Background failures leave any previously downloaded update available.
   } finally {
+    if (candidate) await candidate.close().catch(() => {});
+    downloadingUpdate.value = false;
+    downloadProgress.value = null;
     updateCheckInFlight = false;
     if (
       !updateChecksDisposed &&
       generation !== updateCheckGeneration &&
       store.initialized &&
       autoUpdateEnabled(store.settings.client)
-    )
+    ) {
       void checkForUpdatesInBackground();
+    }
   }
 }
+
+function scheduleUpdateCheck(intervalMinutes: number) {
+  const deadline = Date.now() + intervalMinutes * 60_000;
+  const wait = () => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      void checkForUpdatesInBackground();
+      scheduleUpdateCheck(intervalMinutes);
+    } else {
+      updateCheckTimer = setTimeout(wait, Math.min(remaining, 2_147_000_000));
+    }
+  };
+  wait();
+}
+
+async function installDownloadedUpdate() {
+  if (installingUpdate.value) return;
+  const update = downloadedUpdate;
+  if (!update) {
+    return;
+  }
+  if (update !== downloadedUpdate) return;
+  installingUpdate.value = true;
+  try {
+    await store.flushPendingSaves();
+    await update.install();
+  } catch (error) {
+    store.notify(`安装更新失败：${String(error)}`);
+  } finally {
+    installingUpdate.value = false;
+  }
+}
+
 watch(
   [
     () => store.initialized,
     () => autoUpdateEnabled(store.settings.client),
+    () => autoDownloadEnabled(store.settings.client),
     () => updateInterval(store.settings.client),
   ],
-  ([initialized, enabled, interval], previous) => {
-    clearInterval(updateCheckTimer);
+  ([initialized, enabled, _download, interval]) => {
+    clearTimeout(updateCheckTimer);
+    updateCheckGeneration++;
     if (!initialized || !enabled) {
-      updateCheckGeneration++;
-      if (!enabled) newVersion.value = '';
+      if (!enabled) void clearDownloadedUpdate();
       return;
     }
-    if (!previous?.[0] || !previous?.[1]) void checkForUpdatesInBackground();
-    updateCheckTimer = setInterval(() => void checkForUpdatesInBackground(), interval * 60 * 1000);
+    void checkForUpdatesInBackground();
+    scheduleUpdateCheck(interval);
   },
   { immediate: true },
 );
@@ -267,19 +346,32 @@ watch(sidebarCollapsed, (value) => {
   if (sidebarReady)
     void writeLocal('lumo-sidebar-collapsed', value).catch((e) => store.notify(String(e)));
 });
-const nav = [
+const baseNav = [
   { id: 'home', label: '首页', icon: House },
   { id: 'countdowns', label: '倒数日', icon: CalendarDays },
   { id: 'stickies', label: '便签', icon: StickyNote },
   { id: 'notes', label: '笔记', icon: BookOpenText },
   { id: 'library', label: '应用库', icon: AppWindow },
 ] as const;
+const nav = computed(() =>
+  store.settings.desktop_cards?.enabled
+    ? [...baseNav, { id: 'desktop-cards', label: '桌面卡片', icon: LayoutGrid } as const]
+    : [...baseNav],
+);
+// 关闭桌面卡片后入口消失，停留在此页会看到一个已停用的页面，直接回到首页。
+watch(
+  () => store.settings.desktop_cards?.enabled,
+  (enabled) => {
+    if (!enabled && page.value === 'desktop-cards') page.value = 'home';
+  },
+);
 const pageComponents = {
   home: HomePage,
   countdowns: CountdownsPage,
   stickies: StickiesPage,
   notes: NotesPage,
   library: LibraryPage,
+  'desktop-cards': DesktopCardsPage,
   settings: SettingsPage,
 };
 const currentView = computed(() => pageComponents[page.value]);
@@ -438,6 +530,9 @@ async function useDefaultRecoveryDirectory() {
 }
 onMounted(async () => {
   window.addEventListener('keydown', keyboard);
+  extraListeners.push(
+    await listen<string>('lumo-cards-error', (event) => store.notify(event.payload)),
+  );
   const appWindow = getCurrentWindow();
   removeCloseListener = await appWindow.onCloseRequested(async (event) => {
     event.preventDefault();
@@ -511,7 +606,8 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   updateChecksDisposed = true;
-  clearInterval(updateCheckTimer);
+  clearTimeout(updateCheckTimer);
+  void clearDownloadedUpdate();
   updateCheckGeneration++;
   window.removeEventListener('keydown', keyboard);
   extraListeners.forEach((unlisten) => unlisten());
@@ -567,6 +663,13 @@ onUnmounted(() => {
       }
     "
     @confirm="finishConfirmation(true)"
+  />
+  <ConfirmDialog
+    v-model:open="updateInstallPrompt"
+    title="安装新版本"
+    :description="`新版本 ${newVersion} 已下载完成。安装后应用将关闭并重启，请先保存工作。现在安装吗？`"
+    confirm-text="安装并重启"
+    @confirm="installDownloadedUpdate"
   />
   <div
     v-if="!store.initialized"
@@ -788,6 +891,10 @@ onUnmounted(() => {
                 ><NotebookPen data-icon="inline-start" />笔记</DropdownMenuItem
               ><DropdownMenuItem @click="navigate('library')"
                 ><AppWindow data-icon="inline-start" />应用库</DropdownMenuItem
+              ><DropdownMenuItem
+                v-if="store.settings.desktop_cards?.enabled"
+                @click="navigate('desktop-cards')"
+                ><LayoutGrid data-icon="inline-start" />桌面卡片</DropdownMenuItem
               ></DropdownMenuContent
             ></DropdownMenu
           >
@@ -807,16 +914,23 @@ onUnmounted(() => {
             ></DropdownMenu
           >
         </nav>
-        <Button
-          v-if="newVersion"
-          variant="outline"
-          size="sm"
-          class="shrink-0"
-          :title="`新版本：${newVersion}`"
-          tooltip-side="bottom"
-          @click="openAbout(true)"
-          >发现新版本</Button
-        >
+        <TooltipProvider v-if="newVersion || detectedVersion" :delay-duration="300">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <Button
+                variant="outline"
+                size="sm"
+                class="shrink-0"
+                :disabled="installingUpdate"
+                @click="newVersion ? (updateInstallPrompt = true) : openAbout(true)"
+                >发现新版本</Button
+              >
+            </TooltipTrigger>
+            <TooltipContent side="bottom" class="whitespace-pre-line">{{
+              `新版本：${detectedVersion || newVersion}${downloadingUpdate ? `\n后台下载中${downloadProgress === null ? '…' : ` ${downloadProgress}%…`}` : ''}`
+            }}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       <div class="relative flex w-full max-w-xl flex-1 items-center" data-no-drag>
         <Search class="pointer-events-none absolute left-3 size-4 text-muted-foreground" /><Input
@@ -941,6 +1055,7 @@ onUnmounted(() => {
     </header>
     <div class="flex min-h-0 flex-1 overflow-hidden">
       <aside
+        v-if="page !== 'settings'"
         class="app-sidebar relative flex shrink-0 flex-col border-r border-border"
         :class="sidebarDragWidth === null ? 'transition-[width] duration-200' : 'select-none'"
         :style="{ width: sidebarCollapsed ? '4.5rem' : `${sidebarWidth}px` }"
@@ -981,7 +1096,7 @@ onUnmounted(() => {
                   ? 'w-full justify-start gap-1 px-1'
                   : 'w-full justify-start gap-3 px-3',
               page === item.id
-                ? 'bg-primary/10 font-semibold text-primary'
+                ? 'bg-primary/10 font-semibold text-primary hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/10'
                 : 'text-muted-foreground',
             ]"
             :aria-label="sidebarCollapsed ? item.label : undefined"
@@ -1015,7 +1130,14 @@ onUnmounted(() => {
           :class="
             page === 'home'
               ? 'flex flex-col overflow-hidden'
-              : ['notes', 'stickies', 'library', 'countdowns', 'settings'].includes(page)
+              : [
+                    'notes',
+                    'stickies',
+                    'library',
+                    'countdowns',
+                    'desktop-cards',
+                    'settings',
+                  ].includes(page)
                 ? 'flex flex-col overflow-hidden pb-4'
                 : 'overflow-y-auto overscroll-contain'
           "

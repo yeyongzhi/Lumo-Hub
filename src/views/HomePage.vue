@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { format } from 'date-fns';
+import { invoke } from '@tauri-apps/api/core';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   CloudSun,
@@ -112,6 +113,19 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ navigate: [page: PageId]; 'open-home-settings': [] }>();
 const store = useWorkspaceStore();
+const diskSummary = ref<{ count: number; total: string } | null>(null);
+async function refreshDiskSummary() {
+  try {
+    const metrics = await invoke<{ disks: { total: number }[] }>('home_metrics');
+    const total = metrics.disks.reduce((sum, disk) => sum + disk.total, 0);
+    diskSummary.value = {
+      count: metrics.disks.length,
+      total: `${(total / 1024 ** 3).toFixed(1)} GB`,
+    };
+  } catch {
+    diskSummary.value = null;
+  }
+}
 const moduleSettings = ref<HomeWidget | null>(null),
   moduleSaving = ref(false);
 const contentAuto = ref(true);
@@ -262,6 +276,7 @@ function observeHomeGrid() {
   gridObserver.observe(container);
 }
 onMounted(() => {
+  void refreshDiskSummary();
   void nextTick(observeHomeGrid);
   window.addEventListener('resize', updateViewportWidth);
   if (props.settingsMode) beginEdit();
@@ -1279,6 +1294,13 @@ async function saveLayout() {
               <h2 class="truncate text-sm font-semibold tracking-tight">
                 {{ widgetNames[widget.kind] }}
               </h2>
+              <span
+                v-if="widget.kind === 'disk'"
+                class="truncate text-xs text-muted-foreground"
+                aria-live="polite"
+              >
+                共 {{ diskSummary?.count ?? 0 }} 个盘符，共 {{ diskSummary?.total ?? '…' }}
+              </span>
               <span
                 v-if="
                   ['weather', 'hitokoto', 'poetry'].includes(widget.kind) && feedUpdates[widget.id]

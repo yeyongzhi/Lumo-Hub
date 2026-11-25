@@ -36,11 +36,14 @@ if (import.meta.env.PROD && isTauri()) {
 }
 
 async function mountWindow() {
-  const { default: root } = await (new URLSearchParams(location.search).has('tool')
-    ? import('./views/ToolWindow.vue')
-    : isTauri() && getCurrentWindow().label === 'quick-launch'
-      ? import('./views/LaunchPanel.vue')
-      : import('./App.vue'));
+  const params = new URLSearchParams(location.search);
+  const { default: root } = await (params.has('desktop-card')
+    ? import('./views/DesktopCardWindow.vue')
+    : params.has('tool')
+      ? import('./views/ToolWindow.vue')
+      : isTauri() && getCurrentWindow().label === 'quick-launch'
+        ? import('./views/LaunchPanel.vue')
+        : import('./App.vue'));
   createApp({ render: () => h(Fragment, [h(root), h(Toaster)]) })
     .use(createPinia())
     .mount('#app');

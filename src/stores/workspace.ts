@@ -11,6 +11,7 @@ import type {
   AppSettings,
   BootstrapInfo,
   Countdown,
+  DesktopCard,
   Note,
   Resource,
   ResourceGroup,
@@ -48,6 +49,15 @@ const defaults: AppSettings = {
   home_layout: defaultHomeLayout(),
   launcher: { enabled: true, shortcut: 'Alt+Space', minimal_mode: false },
   auto_backup: { enabled: true, interval_hours: 24, retain: 7 },
+  desktop_cards: {
+    enabled: false,
+    auto_fit: true,
+    adaptive_height: true,
+    allow_overlap: true,
+    item_view: 'grid',
+    item_icon_size: 'medium',
+    show_item_names: true,
+  },
 };
 
 export const useWorkspaceStore = defineStore('workspace', () => {
@@ -66,6 +76,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const countdowns = ref<Countdown[]>([]);
   const resources = ref<Resource[]>([]);
   const groups = ref<ResourceGroup[]>([]);
+  const cards = ref<DesktopCard[]>([]);
   const searchTarget = ref<{
     kind: 'note' | 'sticky' | 'countdown' | 'resource';
     id: string;
@@ -159,13 +170,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function reload() {
     await settingChain;
-    const [n, noteIssues, s, c, r, g] = await Promise.all([
+    const [n, noteIssues, s, c, r, g, cardList] = await Promise.all([
       api.listNotes(),
       api.noteFileIssues(),
       api.listStickies(),
       api.listCountdowns(),
       api.listResources(),
       api.listGroups(),
+      api.listDesktopCards().catch((error) => {
+        notify(`桌面卡片加载失败：${String(error)}`);
+        return cards.value;
+      }),
     ]);
     const currentSettings = await api.bootstrap();
     settings.value = {
@@ -183,6 +198,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     countdowns.value = c;
     resources.value = r;
     groups.value = g;
+    cards.value = cardList;
   }
 
   async function reloadNotes() {
@@ -207,6 +223,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const [items, folders] = await Promise.all([api.listResources(), api.listGroups()]);
     resources.value = items;
     groups.value = folders;
+  }
+  async function reloadCards() {
+    try {
+      cards.value = await api.listDesktopCards();
+    } catch (error) {
+      notify(`桌面卡片加载失败：${String(error)}`);
+    }
   }
   async function reloadSettings() {
     await settingChain;
@@ -313,11 +336,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     countdowns,
     resources,
     groups,
+    cards,
     searchTarget,
     reloadNotes,
     reloadStickies,
     reloadCountdowns,
     reloadResources,
+    reloadCards,
     reloadSettings,
     initialize,
     recoverDataDirectory,

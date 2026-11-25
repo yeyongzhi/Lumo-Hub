@@ -14,10 +14,12 @@ import {
 import { Field, FieldGroup, FieldLabel, FieldDescription } from '@/components/ui/field';
 import { nextTick, ref, watch } from 'vue';
 import {
+  ArrowLeft,
   CircleHelp,
   Database,
   Download,
   FolderCog,
+  FolderOpen,
   Settings,
   Sun,
   Moon,
@@ -43,7 +45,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
-import { autoUpdateEnabled, updateInterval, updateIntervals } from '@/lib/update-preferences';
+import {
+  autoDownloadEnabled,
+  autoUpdateEnabled,
+  updateInterval,
+  updateIntervals,
+} from '@/lib/update-preferences';
 import {
   libraryColumnOptions,
   libraryColumns,
@@ -51,6 +58,7 @@ import {
   libraryIconSize,
 } from '@/lib/library-preferences';
 
+const emit = defineEmits<{ navigate: [page: 'home'] }>();
 const store = useWorkspaceStore();
 const libraryColumnDraft = ref(libraryColumns(store.settings.client));
 let pendingLibraryColumnWrites = 0;
@@ -87,16 +95,32 @@ watch(
   },
   { immediate: true },
 );
-const settingsMenu = [
-  { id: 'appearance', label: '外观', icon: Settings },
-  { id: 'app', label: '应用设置', icon: Settings },
-  { id: 'home', label: '首页设置', icon: LayoutDashboard },
-  { id: 'library', label: '应用启动项', icon: AppWindow },
-  { id: 'data', label: '数据与备份', icon: Database },
-  { id: 'launcher', label: '快捷启动', icon: Keyboard },
-  { id: 'backup', label: '自动备份', icon: ShieldCheck },
-  { id: 'trash', label: '回收站', icon: Trash2 },
-  { id: 'about', label: '关于', icon: CircleHelp },
+const settingsGroups = [
+  {
+    label: '通用',
+    items: [
+      { id: 'appearance', label: '外观', icon: Settings },
+      { id: 'app', label: '应用设置', icon: Settings },
+    ],
+  },
+  {
+    label: '功能',
+    items: [
+      { id: 'home', label: '首页', icon: LayoutDashboard },
+      { id: 'library', label: '应用库', icon: AppWindow },
+      { id: 'launcher', label: '快捷启动', icon: Keyboard },
+      { id: 'desktop-cards', label: '桌面卡片', icon: LayoutGrid },
+    ],
+  },
+  {
+    label: '数据',
+    items: [
+      { id: 'data', label: '数据与备份', icon: Database },
+      { id: 'backup', label: '自动备份', icon: ShieldCheck },
+      { id: 'trash', label: '回收站', icon: Trash2 },
+    ],
+  },
+  { label: '其他', items: [{ id: 'about', label: '关于', icon: CircleHelp }] },
 ];
 const fontSizes = [12, 14, 16, 18, 20, 22, 24];
 const radii = [
@@ -191,6 +215,41 @@ async function setCloseBehavior(value: unknown) {
     });
   } catch {
     // The store reports save failures and restores the previous setting.
+  }
+}
+async function updateDesktopCardsSettings(patch: Partial<AppSettings['desktop_cards']>) {
+  try {
+    await store.setSetting('desktop_cards', { ...store.settings.desktop_cards, ...patch });
+    if (patch.enabled) await store.reloadCards();
+  } catch (error) {
+    store.notify(`保存桌面卡片设置失败：${String(error)}`);
+  }
+}
+function setDesktopCards(value: boolean) {
+  void updateDesktopCardsSettings({ enabled: value });
+}
+function setDesktopCardsAutoFit(value: boolean) {
+  void updateDesktopCardsSettings({ auto_fit: value });
+}
+function setDesktopCardsAdaptiveHeight(value: boolean) {
+  void updateDesktopCardsSettings({ adaptive_height: value });
+}
+function setDesktopCardsAllowOverlap(value: boolean) {
+  void updateDesktopCardsSettings({ allow_overlap: value });
+}
+function setDesktopCardView(value: string | number) {
+  if (value === 'grid' || value === 'list') void updateDesktopCardsSettings({ item_view: value });
+}
+function setDesktopCardIconSize(value: string | number) {
+  if (value === 'small' || value === 'medium' || value === 'large')
+    void updateDesktopCardsSettings({ item_icon_size: value });
+}
+async function openDesktopCardStorage() {
+  try {
+    const path = await api.openDesktopCardStorageFolder();
+    store.notify(`桌面卡片文件夹：${path}`);
+  } catch (error) {
+    store.notify(`打开桌面卡片文件夹失败：${String(error)}`);
   }
 }
 async function setLibraryDensity(value: unknown) {
@@ -316,24 +375,41 @@ async function restoreBackup() {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col items-stretch gap-4 overflow-hidden">
-    <nav
-      class="flex shrink-0 items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card p-2"
-      aria-label="设置分类"
-    >
-      <Button
-        v-for="item in settingsMenu"
-        :key="item.id"
-        variant="ghost"
-        class="h-10 shrink-0 gap-2 rounded-lg px-3 text-sm"
-        :class="
-          section === item.id ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground'
-        "
-        :aria-current="section === item.id ? 'page' : undefined"
-        @click="selectSection(item.id)"
-        ><component :is="item.icon" />{{ item.label }}</Button
-      >
-    </nav>
+  <div class="flex min-h-0 min-w-0 flex-1 gap-4 overflow-hidden">
+    <Card class="flex min-h-0 w-44 shrink-0 flex-col gap-0 overflow-hidden py-0">
+      <ScrollArea class="min-h-0 flex-1">
+        <nav class="space-y-4 p-2" aria-label="设置分类">
+          <div v-for="group in settingsGroups" :key="group.label" class="space-y-1">
+            <p class="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+              {{ group.label }}
+            </p>
+            <Button
+              v-for="item in group.items"
+              :key="item.id"
+              variant="ghost"
+              class="h-9 w-full justify-start gap-2 rounded-lg px-3 text-sm"
+              :class="
+                section === item.id
+                  ? 'bg-primary/10 font-semibold text-primary'
+                  : 'text-muted-foreground'
+              "
+              :aria-current="section === item.id ? 'page' : undefined"
+              @click="selectSection(item.id)"
+              ><component :is="item.icon" />{{ item.label }}</Button
+            >
+          </div>
+        </nav>
+      </ScrollArea>
+      <div class="shrink-0 border-t border-border p-2">
+        <Button
+          variant="ghost"
+          class="w-full justify-start gap-2"
+          @click="emit('navigate', 'home')"
+        >
+          <ArrowLeft />返回首页
+        </Button>
+      </div>
+    </Card>
     <Card class="min-h-0 min-w-0 flex-1 gap-0 overflow-hidden py-0" data-settings-panel>
       <CardContent
         v-if="section === 'home'"
@@ -580,6 +656,121 @@ async function restoreBackup() {
               >
             </FieldGroup>
           </div>
+          <div v-else-if="section === 'desktop-cards'" class="flex min-w-0 flex-col gap-6">
+            <FieldGroup>
+              <Field orientation="horizontal" class="items-start">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="desktop-cards-enabled" class="text-base font-semibold"
+                    >启用桌面卡片</FieldLabel
+                  >
+                  <FieldDescription
+                    >拖入的文件会移入桌面旁的专属文件夹，移除时移回；备份不含这些文件，关闭仅隐藏卡片。</FieldDescription
+                  >
+                </div>
+                <div class="flex shrink-0 flex-col items-end gap-2">
+                  <Switch
+                    id="desktop-cards-enabled"
+                    :model-value="store.settings.desktop_cards?.enabled === true"
+                    @update:model-value="(value) => setDesktopCards(value)"
+                  />
+                  <Button variant="outline" size="sm" @click="openDesktopCardStorage"
+                    ><FolderOpen data-icon="inline-start" />打开卡片文件夹</Button
+                  >
+                </div>
+              </Field>
+              <Field orientation="horizontal">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold">图标显示方式</FieldLabel>
+                  <FieldDescription>选择桌面卡片条目的排列方式。</FieldDescription>
+                </div>
+                <Tabs
+                  :model-value="store.settings.desktop_cards?.item_view ?? 'grid'"
+                  @update:model-value="setDesktopCardView"
+                >
+                  <TabsList aria-label="图标显示方式"
+                    ><TabsTrigger value="grid">网格</TabsTrigger
+                    ><TabsTrigger value="list">列表</TabsTrigger></TabsList
+                  >
+                </Tabs>
+              </Field>
+              <Field
+                v-if="store.settings.desktop_cards?.item_view !== 'list'"
+                orientation="horizontal"
+              >
+                <div class="min-w-0 flex-1">
+                  <FieldLabel class="text-base font-semibold">图标显示大小</FieldLabel>
+                  <FieldDescription>调整桌面卡片中条目的图标大小。</FieldDescription>
+                </div>
+                <Tabs
+                  :model-value="store.settings.desktop_cards?.item_icon_size ?? 'medium'"
+                  @update:model-value="setDesktopCardIconSize"
+                >
+                  <TabsList aria-label="图标显示大小"
+                    ><TabsTrigger value="small">小</TabsTrigger
+                    ><TabsTrigger value="medium">中</TabsTrigger
+                    ><TabsTrigger value="large">大</TabsTrigger></TabsList
+                  >
+                </Tabs>
+              </Field>
+              <Field orientation="horizontal">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="desktop-cards-show-names" class="text-base font-semibold"
+                    >显示图标名称</FieldLabel
+                  >
+                  <FieldDescription>在桌面卡片中显示条目名称。</FieldDescription>
+                </div>
+                <Switch
+                  id="desktop-cards-show-names"
+                  :model-value="store.settings.desktop_cards?.show_item_names !== false"
+                  @update:model-value="
+                    (value) => updateDesktopCardsSettings({ show_item_names: value })
+                  "
+                />
+              </Field>
+              <Field orientation="horizontal" class="items-start">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="desktop-cards-auto-fit" class="text-base font-semibold"
+                    >内容区域自动伸缩</FieldLabel
+                  >
+                  <FieldDescription>鼠标移入标题栏时展开内容，移出卡片后收缩。</FieldDescription>
+                </div>
+                <Switch
+                  id="desktop-cards-auto-fit"
+                  :model-value="store.settings.desktop_cards?.auto_fit !== false"
+                  :disabled="store.settings.desktop_cards?.enabled !== true"
+                  @update:model-value="(value) => setDesktopCardsAutoFit(value)"
+                />
+              </Field>
+              <Field orientation="horizontal" class="items-start">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="desktop-cards-adaptive-height" class="text-base font-semibold"
+                    >自适应高度</FieldLabel
+                  >
+                  <FieldDescription>根据卡片中的图标数量自动调整内容区域高度。</FieldDescription>
+                </div>
+                <Switch
+                  id="desktop-cards-adaptive-height"
+                  :model-value="store.settings.desktop_cards?.adaptive_height !== false"
+                  :disabled="store.settings.desktop_cards?.enabled !== true"
+                  @update:model-value="(value) => setDesktopCardsAdaptiveHeight(value)"
+                />
+              </Field>
+              <Field orientation="horizontal" class="items-start">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="desktop-cards-allow-overlap" class="text-base font-semibold"
+                    >允许卡片重叠</FieldLabel
+                  >
+                  <FieldDescription>关闭后卡片会自动避让；空间不足时会提示。</FieldDescription>
+                </div>
+                <Switch
+                  id="desktop-cards-allow-overlap"
+                  :model-value="store.settings.desktop_cards?.allow_overlap !== false"
+                  :disabled="store.settings.desktop_cards?.enabled !== true"
+                  @update:model-value="(value) => setDesktopCardsAllowOverlap(value)"
+                />
+              </Field>
+            </FieldGroup>
+          </div>
           <div v-else-if="section === 'app'" class="flex min-w-0 flex-col gap-6">
             <FieldGroup>
               <Field orientation="horizontal">
@@ -590,7 +781,7 @@ async function restoreBackup() {
                   >
                 </div>
                 <RadioGroup
-                  class="shrink-0"
+                  class="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2"
                   :model-value="store.settings.product.close_to_tray ? 'tray' : 'quit'"
                   aria-label="关闭窗口时"
                   @update:model-value="setCloseBehavior"
@@ -622,24 +813,44 @@ async function restoreBackup() {
                   "
                 />
               </Field>
-              <Field v-if="autoUpdateEnabled(store.settings.client)">
-                <FieldLabel for="update-check-interval" class="text-base font-semibold"
+              <Field orientation="horizontal">
+                <div class="min-w-0 flex-1">
+                  <FieldLabel for="auto-update-download" class="text-base font-semibold"
+                    >自动下载更新</FieldLabel
+                  >
+                  <FieldDescription
+                    >发现新版本后在后台下载，下载完成后由你确认是否安装。</FieldDescription
+                  >
+                </div>
+                <Switch
+                  id="auto-update-download"
+                  :model-value="autoDownloadEnabled(store.settings.client)"
+                  @update:model-value="
+                    (value) => setUpdatePreference('lumo-auto-update-download', value)
+                  "
+                />
+              </Field>
+              <Field v-if="autoUpdateEnabled(store.settings.client)" orientation="horizontal">
+                <FieldLabel
+                  for="update-check-interval"
+                  class="min-w-0 flex-1 text-base font-semibold"
                   >检测时间间隔</FieldLabel
                 >
                 <Select
                   :model-value="String(updateInterval(store.settings.client))"
                   @update:model-value="setUpdateInterval"
                 >
-                  <SelectTrigger id="update-check-interval" class="w-full max-w-xs"
+                  <SelectTrigger id="update-check-interval" class="w-48 max-w-[50%] shrink-0"
                     ><SelectValue
                   /></SelectTrigger>
                   <SelectContent
                     ><SelectGroup>
-                      <SelectItem value="10">10 分钟</SelectItem>
-                      <SelectItem value="30">30 分钟</SelectItem>
-                      <SelectItem value="60">1 小时</SelectItem>
-                      <SelectItem value="360">6 小时</SelectItem>
-                      <SelectItem value="1440">24 小时</SelectItem>
+                      <SelectItem value="120">每 2 小时</SelectItem>
+                      <SelectItem value="360">每 6 小时</SelectItem>
+                      <SelectItem value="1440">每天</SelectItem>
+                      <SelectItem value="4320">每三天</SelectItem>
+                      <SelectItem value="10080">每周</SelectItem>
+                      <SelectItem value="43200">每月（30 天）</SelectItem>
                     </SelectGroup></SelectContent
                   >
                 </Select>

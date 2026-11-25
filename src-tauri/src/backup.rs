@@ -85,7 +85,7 @@ fn write_backup_archive(
             }
         }
     }
-    for name in ["tags.json","notes","cache"] {let p=root.join(name);if p.exists(){for entry in WalkDir::new(&p).follow_links(false){let entry=entry.map_err(|e|e.to_string())?;if entry.file_type().is_file(){let rel=entry.path().strip_prefix(root).map_err(|e|e.to_string())?.to_string_lossy().replace('\\',"/");files.push(serde_json::json!({"path":rel,"size":entry.metadata().map_err(|e|e.to_string())?.len()}));}}}}
+    for name in ["tags.json","desktop_cards.json","notes","cache"] {let p=root.join(name);if p.exists(){for entry in WalkDir::new(&p).follow_links(false){let entry=entry.map_err(|e|e.to_string())?;if entry.file_type().is_file(){let rel=entry.path().strip_prefix(root).map_err(|e|e.to_string())?.to_string_lossy().replace('\\',"/");files.push(serde_json::json!({"path":rel,"size":entry.metadata().map_err(|e|e.to_string())?.len()}));}}}}
     let extra=files.clone();let mut zip = ZipWriter::new(file);
     let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
     let manifest = serde_json::json!({"format":"lumo-hub-backup","format_version":1,"created_at":chrono::Utc::now().to_rfc3339(),"app_version":env!("CARGO_PKG_VERSION"),"files":files});
@@ -97,7 +97,7 @@ fn write_backup_archive(
             .as_bytes(),
     )
     .map_err(|e| e.to_string())?;
-    add_file(&mut zip, "app.db", snapshot_path, options)?;for entry in extra {let name=entry["path"].as_str().ok_or("无效路径")?;if name=="tags.json"||name.starts_with("notes/")||name.starts_with("cache/"){add_file(&mut zip,name,&root.join(name),options)?;}}
+    add_file(&mut zip, "app.db", snapshot_path, options)?;for entry in extra {let name=entry["path"].as_str().ok_or("无效路径")?;if name=="tags.json"||name=="desktop_cards.json"||name.starts_with("notes/")||name.starts_with("cache/"){add_file(&mut zip,name,&root.join(name),options)?;}}
     if root.join("setting.json").exists() {
         add_file(&mut zip, "setting.json", &root.join("setting.json"), options)?;
     }
@@ -276,7 +276,7 @@ pub fn restore_backup(app: tauri::AppHandle, state: State<'_, AppState>, source:
                 has_manifest = true;
                 continue;
             }
-            if name != "app.db" && name != "setting.json" && name != "app.json" && name != "tags.json" && !name.starts_with("notes/") && !name.starts_with("cache/") && !name.starts_with("icons/") {
+            if name != "app.db" && name != "setting.json" && name != "app.json" && name != "tags.json" && name != "desktop_cards.json" && !name.starts_with("notes/") && !name.starts_with("cache/") && !name.starts_with("icons/") {
                 return Err("备份包含未知文件，已停止恢复。".into());
             }
             if actual_files.contains_key(&name) {
@@ -479,6 +479,19 @@ impl ExtraSwap {
                 fs::rename(&staged, &path).map_err(|e| format!("无法恢复数据 {name}：{e}"))?;
             }
         }
+        // Older backups may not contain cards; leave existing card data untouched in that case.
+        let name = "desktop_cards.json";
+        let staged = stage.join(name);
+        if staged.exists() {
+            let path = self.root.join(name);
+            let hold = if path.exists() {
+                let hold = self.root.join(format!(".restore-{}-{}", name, uuid::Uuid::new_v4()));
+                fs::rename(&path, &hold).map_err(|e| format!("无法暂存旧数据 {name}：{e}"))?;
+                Some(hold)
+            } else { None };
+            self.held.push((name.into(), hold));
+            fs::rename(&staged, &path).map_err(|e| format!("无法恢复数据 {name}：{e}"))?;
+        }
         Ok(())
     }
 
@@ -513,6 +526,18 @@ impl Drop for ExtraSwap {
 #[cfg(test)]
 mod file_backup_tests {
  use super::*;
+ #[test]
+ fn cards_restore_and_rollback_preserve_existing_data() {
+  let root=std::env::temp_dir().join(format!("lumo-cards-restore-test-{}",uuid::Uuid::new_v4()));
+  let stage=root.join("stage");fs::create_dir_all(&stage).unwrap();
+  fs::write(root.join("desktop_cards.json"),"old").unwrap();fs::write(stage.join("desktop_cards.json"),"new").unwrap();
+  {let mut swap=ExtraSwap::new(&root);swap.apply(&stage).unwrap();assert_eq!(fs::read_to_string(root.join("desktop_cards.json")).unwrap(),"new");}
+  assert_eq!(fs::read_to_string(root.join("desktop_cards.json")).unwrap(),"old");
+  fs::write(stage.join("desktop_cards.json"),"new").unwrap();
+  {let mut swap=ExtraSwap::new(&root);swap.apply(&stage).unwrap();swap.commit();}
+  assert_eq!(fs::read_to_string(root.join("desktop_cards.json")).unwrap(),"new");
+  fs::remove_dir_all(root).unwrap();
+ }
  #[test]
  fn archive_contains_markdown_tags_and_unified_settings(){
   let root=std::env::temp_dir().join(format!("lumo-backup-test-{}",uuid::Uuid::new_v4()));fs::create_dir_all(root.join("notes")).unwrap();

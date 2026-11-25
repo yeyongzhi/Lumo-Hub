@@ -19,6 +19,7 @@ pub struct AppSettings { #[serde(default)] pub client:std::collections::HashMap<
     pub home_layout: Vec<HomeWidget>,
     #[serde(default)] pub launcher: LauncherSettings,
     #[serde(default)] pub auto_backup: AutoBackupSettings,
+    #[serde(default)] pub desktop_cards: DesktopCardsSettings,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -84,6 +85,7 @@ impl Default for AppSettings {
             welcome_completed: false,
             home_layout: default_home_layout(),
             launcher: LauncherSettings::default(), auto_backup: AutoBackupSettings::default(),
+            desktop_cards: DesktopCardsSettings::default(),
         }
     }
 }
@@ -132,6 +134,31 @@ mod layout_tests {
             let restored: AppSettings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
             assert_eq!(restored.sidebar_width, width);
         }
+    }
+
+    #[test]
+    fn desktop_cards_default_off_and_survive_roundtrip() {
+        let legacy: AppSettings = serde_json::from_str(r#"{"theme_mode":"dark","accent":"blue","font_size":14,"welcome_completed":true}"#).unwrap();
+        assert!(!legacy.desktop_cards.enabled);
+        // 自动伸缩是后加开关，旧配置文件缺少字段时应保持开启。
+        assert!(legacy.desktop_cards.auto_fit);
+        assert_eq!(legacy.desktop_cards.item_view, "grid");
+        assert_eq!(legacy.desktop_cards.item_icon_size, "medium");
+        assert!(legacy.desktop_cards.show_item_names);
+        let mut settings = AppSettings::default();
+        assert!(!settings.desktop_cards.enabled);
+        assert!(settings.desktop_cards.auto_fit);
+        settings.desktop_cards.enabled = true;
+        settings.desktop_cards.auto_fit = false;
+        settings.desktop_cards.item_view = "list".into();
+        settings.desktop_cards.item_icon_size = "large".into();
+        settings.desktop_cards.show_item_names = false;
+        let restored: AppSettings = serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+        assert!(restored.desktop_cards.enabled);
+        assert!(!restored.desktop_cards.auto_fit);
+        assert_eq!(restored.desktop_cards.item_view, "list");
+        assert_eq!(restored.desktop_cards.item_icon_size, "large");
+        assert!(!restored.desktop_cards.show_item_names);
     }
 
     #[test]
@@ -250,3 +277,9 @@ impl Default for LauncherSettings { fn default() -> Self { Self { enabled: true,
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AutoBackupSettings { pub enabled: bool, pub interval_hours: u32, pub retain: usize }
 impl Default for AutoBackupSettings { fn default() -> Self { Self { enabled: true, interval_hours: 24, retain: 7 } } }
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DesktopCardsSettings { #[serde(default)] pub enabled: bool, #[serde(default = "desktop_cards_auto_fit_default")] pub auto_fit: bool, #[serde(default = "desktop_cards_auto_fit_default")] pub adaptive_height: bool, #[serde(default = "desktop_cards_auto_fit_default")] pub allow_overlap: bool, #[serde(default = "desktop_cards_view_default")] pub item_view: String, #[serde(default = "desktop_cards_icon_size_default")] pub item_icon_size: String, #[serde(default = "desktop_cards_auto_fit_default")] pub show_item_names: bool }
+fn desktop_cards_auto_fit_default() -> bool { true }
+fn desktop_cards_view_default() -> String { "grid".into() }
+fn desktop_cards_icon_size_default() -> String { "medium".into() }
+impl Default for DesktopCardsSettings { fn default() -> Self { Self { enabled: false, auto_fit: true, adaptive_height: true, allow_overlap: true, item_view: desktop_cards_view_default(), item_icon_size: desktop_cards_icon_size_default(), show_item_names: true } } }

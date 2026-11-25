@@ -8,7 +8,7 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 
 [产品介绍](https://yeyongzhi.github.io/Lumo-Hub/) · [功能与使用指南](https://yeyongzhi.github.io/Lumo-Hub/guide) · [更新日志](https://yeyongzhi.github.io/Lumo-Hub/changelog) · [下载 Windows 版](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
-> 当前代码版本：**0.0.1-beta.14（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
+> 当前代码版本：**0.0.1-beta.15（测试版）**。测试版仍在完善中，首次使用或升级前请备份重要内容。
 
 [查看最新测试版及全部发布](https://github.com/yeyongzhi/Lumo-Hub/releases)
 
@@ -17,6 +17,10 @@ Lumo-Hub 是一款面向 Windows 的桌面效率工作台。它把常用应用�
 ### 快速找到并打开
 
 按 **Alt + Space** 呼出快捷启动，搜索应用、网页或文件名称，也支持拼音和别名。用方向键选择，按回车打开。常用项可以固定，应用库支持分组、收藏、排序和扫描导入。
+
+### 桌面卡片
+
+启用桌面卡片后，可以将文件和快捷方式分类放在桌面，支持标题悬停展开、网格或列表显示及自适应高度。桌面文件拖入时会移入专属文件夹，备份不包含这些文件。
 
 ### 按自己的习惯整理首页
 

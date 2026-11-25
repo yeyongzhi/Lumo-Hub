@@ -1,8 +1,12 @@
 use crate::AppState;
 use tauri::{Emitter,Manager,State};
 use serde::{Serialize,Deserialize};
+use std::sync::atomic::{AtomicBool,Ordering};
 #[derive(Serialize,Deserialize)]
 struct Geometry {x:i32,y:i32,width:u32,height:u32,maximized:bool}
+/// 开机自启时先留在托盘，等用户从托盘打开时再恢复上次的窗口尺寸与最大化状态。
+static GEOMETRY_PENDING: AtomicBool = AtomicBool::new(false);
+pub fn is_autostart_launch() -> bool { std::env::args_os().any(|arg| arg.to_string_lossy() == "--autostart") }
 fn legacy_geometry_path(app:&tauri::AppHandle)->Option<std::path::PathBuf>{app.try_state::<AppState>().and_then(|s|s.data_dir.lock().ok().map(|p|p.join("window.json")))}
 fn remember(app:&tauri::AppHandle){
     if let Some(window)=app.get_webview_window("main") {
@@ -13,24 +17,38 @@ fn remember(app:&tauri::AppHandle){
         }
     }
 }
+fn restore_geometry(app:&tauri::AppHandle){
+    let Some(window)=app.get_webview_window("main") else {return};
+    let Some(path)=legacy_geometry_path(app) else {return};
+    let saved=app.try_state::<AppState>().and_then(|s|s.settings.lock().ok().and_then(|s|s.client.get("lumo-window").cloned())).and_then(|value|serde_json::from_value::<Geometry>(value).ok()).or_else(||std::fs::read(path).ok().and_then(|bytes|serde_json::from_slice::<Geometry>(&bytes).ok()));
+    let Some(g)=saved else {return};
+    let visible=window.available_monitors().unwrap_or_default().iter().any(|m| {let p=m.position();let s=m.size();g.x < p.x+s.width as i32 && g.x+g.width as i32 >p.x && g.y <p.y+s.height as i32 && g.y+g.height as i32>p.y});
+    if visible && (900..=10000).contains(&g.width) && (640..=10000).contains(&g.height){
+        let _=window.set_size(tauri::PhysicalSize::new(g.width,g.height));
+        let _=window.set_position(tauri::PhysicalPosition::new(g.x,g.y));
+        if g.maximized{let _=window.maximize();}
+    }
+}
 #[cfg(windows)]
 pub fn autostart(enabled:bool)->Result<(),String>{
     use winreg::{RegKey,enums::*};
     let (key,_)=RegKey::predef(HKEY_CURRENT_USER).create_subkey(r"Software\Microsoft\Windows\CurrentVersion\Run").map_err(|e|e.to_string())?;
     if enabled {
         let exe=std::env::current_exe().map_err(|e|e.to_string())?;
-        key.set_value("Lumo-Hub",&format!("\"{}\"",exe.display())).map_err(|e|e.to_string())
+        // --autostart 让登录启动时只挂在托盘，不弹出主面板。
+        key.set_value("Lumo-Hub",&format!("\"{}\" --autostart",exe.display())).map_err(|e|e.to_string())
     } else { match key.delete_value("Lumo-Hub"){Ok(())=>Ok(()),Err(e) if e.kind()==std::io::ErrorKind::NotFound=>Ok(()),Err(e)=>Err(e.to_string())} }
 }
 #[cfg(not(windows))]
 pub fn autostart(_enabled:bool)->Result<(),String>{Err("此平台尚不支持开机启动".into())}
 pub fn setup(app:&tauri::AppHandle)->Result<(),String>{
     use tauri::{menu::{Menu,MenuItem},tray::{TrayIconBuilder,TrayIconEvent,MouseButton,MouseButtonState}};
-    if let (Some(path),Some(window))=(legacy_geometry_path(app),app.get_webview_window("main")) {
-        if let Ok(g)=app.try_state::<AppState>().and_then(|s|s.settings.lock().ok().and_then(|s|s.client.get("lumo-window").cloned())).and_then(|value|serde_json::from_value::<Geometry>(value).ok()).or_else(||std::fs::read(path).ok().and_then(|bytes|serde_json::from_slice::<Geometry>(&bytes).ok())).ok_or(()) {
-            let visible=window.available_monitors().unwrap_or_default().iter().any(|m| {let p=m.position();let s=m.size();g.x < p.x+s.width as i32 && g.x+g.width as i32 >p.x && g.y <p.y+s.height as i32 && g.y+g.height as i32>p.y});
-            if visible && (900..=10000).contains(&g.width) && (640..=10000).contains(&g.height){let _=window.set_size(tauri::PhysicalSize::new(g.width,g.height));let _=window.set_position(tauri::PhysicalPosition::new(g.x,g.y));if g.maximized{let _=window.maximize();}}
-        }
+    if is_autostart_launch() {
+        // 开机自启：窗口保持隐藏，位置与最大化状态留到用户从托盘打开时再恢复。
+        GEOMETRY_PENDING.store(true,Ordering::SeqCst);
+    } else {
+        restore_geometry(app);
+        if let Some(window)=app.get_webview_window("main") { let _=window.show(); }
     }
     let show=MenuItem::with_id(app,"show","打开 Lumo",true,None::<&str>).map_err(|e|e.to_string())?;
     let quick=MenuItem::with_id(app,"quick","快捷启动",true,None::<&str>).map_err(|e|e.to_string())?;
@@ -52,7 +70,10 @@ pub fn setup(app:&tauri::AppHandle)->Result<(),String>{
     .on_tray_icon_event(|tray,event|{if matches!(event,TrayIconEvent::Click{button:MouseButton::Left,button_state:MouseButtonState::Up,..}){show_main(tray.app_handle());}}).build(app).map_err(|e|e.to_string())?;
     Ok(())
 }
-fn show_main(app:&tauri::AppHandle){if let Some(window)=app.get_webview_window("main"){let _=window.show();let _=window.unminimize();let _=window.set_focus();}}
+pub(crate) fn show_main(app:&tauri::AppHandle){
+    if GEOMETRY_PENDING.swap(false,Ordering::SeqCst){restore_geometry(app);}
+    if let Some(window)=app.get_webview_window("main"){let _=window.show();let _=window.unminimize();let _=window.set_focus();}
+}
 #[tauri::command]
 pub fn close_main(app:tauri::AppHandle,state:State<'_,AppState>)->Result<(),String>{
     remember(&app);

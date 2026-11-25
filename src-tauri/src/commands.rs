@@ -331,6 +331,11 @@ pub fn set_setting(
             if ![24,168].contains(&options.interval_hours) || !(1..=30).contains(&options.retain) { return Err("备份周期或保留数量无效".into()); }
             settings.auto_backup = options;
         }
+        "desktop_cards" => {
+            let options: crate::models::DesktopCardsSettings = serde_json::from_value(value).map_err(|_| "桌面卡片设置无效")?;
+            if !["grid", "list"].contains(&options.item_view.as_str()) || !["small", "medium", "large"].contains(&options.item_icon_size.as_str()) { return Err("桌面卡片显示设置无效".into()); }
+            settings.desktop_cards = options;
+        }
         _ => return Err("不允许修改此设置项".into()),
     }
     if let Err(error) = storage::save_settings(&data_root(&state)?, &settings) {
@@ -341,6 +346,10 @@ pub fn set_setting(
     let result=settings.clone();
     drop(settings);
     let _=app.emit("lumo-settings-changed",());
+    if key=="desktop_cards" {
+        let handle=app.clone();
+        tauri::async_runtime::spawn(async move { if let Err(error) = crate::desktop_cards::sync_windows(&handle).await { let _ = handle.emit("lumo-cards-error", error); } });
+    }
     Ok(result)
 }
 
@@ -635,7 +644,7 @@ fn map_resource(r: &rusqlite::Row<'_>) -> rusqlite::Result<Resource> {
     })
 }
 
-fn saved_icon_path(data_dir: &Path, icon_path: &str) -> Option<PathBuf> {
+pub(crate) fn saved_icon_path(data_dir: &Path, icon_path: &str) -> Option<PathBuf> {
     let relative = Path::new(icon_path);
     if relative.parent() == Some(Path::new("icons"))
         && relative.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
@@ -646,7 +655,7 @@ fn saved_icon_path(data_dir: &Path, icon_path: &str) -> Option<PathBuf> {
     }
 }
 
-fn save_resource_icon(data_dir: &Path, target: &str) -> Result<Option<String>, String> {
+pub(crate) fn save_resource_icon(data_dir: &Path, target: &str) -> Result<Option<String>, String> {
     let resolved = if Path::new(target).extension().is_some_and(|e| e.eq_ignore_ascii_case("lnk")) {
         app_scan::resolve_shortcuts(&[target.to_string()]).ok()
             .and_then(|mut links| links.remove(&app_scan::path_key(target)))

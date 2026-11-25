@@ -1,4 +1,40 @@
-export type PageId = 'home' | 'countdowns' | 'stickies' | 'notes' | 'library' | 'settings';
+export type PageId =
+  'home' | 'countdowns' | 'stickies' | 'notes' | 'library' | 'desktop-cards' | 'settings';
+
+export interface DesktopCardItem {
+  id: string;
+  name: string;
+  target: string;
+  kind: ResourceKind;
+  icon_data: string | null;
+  missing: boolean;
+  managed: boolean;
+  recovery_state: 'reference' | 'stored' | 'interrupted' | 'conflict' | 'missing';
+  original_path: string | null;
+}
+
+export type DesktopCardOpacity = 'frosted' | 'translucent' | 'solid';
+export type DesktopCardIconSize = 'small' | 'medium' | 'large';
+export interface DesktopCardStyle {
+  opacity: DesktopCardOpacity;
+  icon_size: DesktopCardIconSize;
+}
+
+export interface DesktopCard {
+  id: string;
+  title: string;
+  items: DesktopCardItem[];
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sort_order: number;
+  locked: boolean;
+  visible_on_desktop: boolean;
+  icon: string | null;
+  emoji: string | null;
+  style: DesktopCardStyle;
+}
 
 export interface Note {
   id: string;
@@ -120,6 +156,15 @@ export interface AppSettings {
     window_height?: number | null;
   };
   auto_backup: { enabled: boolean; interval_hours: number; retain: number };
+  desktop_cards: {
+    enabled: boolean;
+    auto_fit: boolean;
+    adaptive_height: boolean;
+    allow_overlap: boolean;
+    item_view: 'grid' | 'list';
+    item_icon_size: DesktopCardIconSize;
+    show_item_names: boolean;
+  };
 }
 
 export interface BootstrapInfo {

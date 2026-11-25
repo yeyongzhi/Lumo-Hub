@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { FolderOpen } from '@lucide/vue';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useWorkspaceStore } from '@/stores/workspace';
@@ -39,6 +40,9 @@ async function refresh() {
   }
 }
 const bars = computed(() => history.value.map((value) => Math.max(5, value)));
+const diskTotal = computed(
+  () => metrics.value?.disks.reduce((sum, disk) => sum + disk.total, 0) ?? 0,
+);
 function bytes(value: number) {
   if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
   if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
@@ -119,41 +123,53 @@ onUnmounted(() => {
       >
     </template>
     <template v-else>
+      <span class="sr-only">共 {{ metrics.disks.length }} 个盘符，共 {{ bytes(diskTotal) }}</span>
       <ScrollArea v-if="metrics.disks.length" class="h-26 max-h-full min-h-0 w-full">
         <div class="flex flex-col gap-2 pr-2">
-          <Button
+          <div
             v-for="disk in metrics.disks"
             :key="disk.path"
-            variant="ghost"
-            class="relative h-12 w-full min-w-0 overflow-hidden rounded-lg bg-muted p-0 text-left hover:bg-muted"
-            :title="`打开${diskLabel(disk)}盘`"
-            @click="openDisk(disk)"
+            class="flex w-full min-w-0 items-center gap-1"
           >
-            <span
-              class="absolute inset-y-0 left-0 bg-primary"
-              :style="{ width: `${diskUsedPercent(disk)}%` }"
-            />
-            <span
-              class="absolute inset-0 flex min-w-0 items-center justify-between gap-2 px-3 text-foreground"
+            <div
+              class="relative h-12 min-w-0 flex-1 overflow-hidden rounded-lg bg-muted text-left text-sm"
             >
-              <span class="shrink-0 font-semibold">{{ diskLabel(disk) }}</span>
-              <span class="truncate text-xs tabular-nums"
-                >已用 {{ bytes(Math.max(0, disk.total - disk.available)) }} · 剩余
-                {{ bytes(disk.available) }}</span
+              <span
+                class="absolute inset-y-0 left-0 bg-primary"
+                :style="{ width: `${diskUsedPercent(disk)}%` }"
+              />
+              <span
+                class="absolute inset-0 flex min-w-0 items-center justify-between gap-2 px-3 text-foreground"
               >
-            </span>
-            <span
-              aria-hidden="true"
-              class="absolute inset-0 flex min-w-0 items-center justify-between gap-2 px-3 text-primary-foreground"
-              :style="{ clipPath: `inset(0 ${100 - diskUsedPercent(disk)}% 0 0)` }"
+                <span class="shrink-0 font-semibold">{{ diskLabel(disk) }}</span>
+                <span class="truncate text-xs tabular-nums"
+                  >已用 {{ bytes(Math.max(0, disk.total - disk.available)) }} · 剩余
+                  {{ bytes(disk.available) }}</span
+                >
+              </span>
+              <span
+                aria-hidden="true"
+                class="absolute inset-0 flex min-w-0 items-center justify-between gap-2 px-3 text-primary-foreground"
+                :style="{ clipPath: `inset(0 ${100 - diskUsedPercent(disk)}% 0 0)` }"
+              >
+                <span class="shrink-0 font-semibold">{{ diskLabel(disk) }}</span>
+                <span class="truncate text-xs tabular-nums"
+                  >已用 {{ bytes(Math.max(0, disk.total - disk.available)) }} · 剩余
+                  {{ bytes(disk.available) }}</span
+                >
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="shrink-0 cursor-pointer"
+              :title="`打开${diskLabel(disk)}盘`"
+              :aria-label="`打开${diskLabel(disk)}盘`"
+              @click="openDisk(disk)"
             >
-              <span class="shrink-0 font-semibold">{{ diskLabel(disk) }}</span>
-              <span class="truncate text-xs tabular-nums"
-                >已用 {{ bytes(Math.max(0, disk.total - disk.available)) }} · 剩余
-                {{ bytes(disk.available) }}</span
-              >
-            </span>
-          </Button>
+              <FolderOpen />
+            </Button>
+          </div>
         </div>
       </ScrollArea>
       <p v-else class="text-sm text-muted-foreground">没有可用磁盘</p>

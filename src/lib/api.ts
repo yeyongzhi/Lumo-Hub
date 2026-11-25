@@ -6,6 +6,8 @@ import type {
   AppSettings,
   BootstrapInfo,
   Countdown,
+  DesktopCard,
+  DesktopCardStyle,
   Note,
   Resource,
   ResourceGroup,
@@ -127,4 +129,60 @@ export const api = {
   restoreDefaultDataDirectory: () => invoke<BootstrapInfo>('restore_default_data_directory'),
   exportBackup: (destination: string) => invoke<void>('export_backup', { destination }),
   restoreBackup: (source: string) => invoke<void>('restore_backup', { source }),
+  listDesktopCards: () => invoke<DesktopCard[]>('desktop_cards_list'),
+  createDesktopCard: (title?: string, icon?: string | null, emoji?: string | null) =>
+    invoke<DesktopCard>('desktop_cards_create', {
+      title: title ?? null,
+      icon: icon ?? null,
+      emoji: emoji ?? null,
+    }),
+  renameDesktopCard: (id: string, title: string) =>
+    invoke<void>('desktop_cards_rename', { id, title }),
+  updateDesktopCardIdentity: (
+    id: string,
+    title: string,
+    icon: string | null,
+    emoji: string | null,
+  ) => invoke<void>('desktop_cards_update_identity', { id, title, icon, emoji }),
+  setDesktopCardLocked: (id: string, locked: boolean) =>
+    invoke<void>('desktop_cards_set_locked', { id, locked }),
+  deleteDesktopCard: (id: string) => invoke<void>('desktop_cards_delete', { id }),
+  addDesktopCardItems: (id: string, paths: string[]) =>
+    invoke<number>('desktop_cards_add_items', { id, paths }),
+  dropDesktopCardItems: (id: string, paths: string[]) =>
+    invoke<{ added: number; errors: string[] }>('desktop_cards_drop_items', { id, paths }),
+  removeDesktopCardItem: (id: string, itemId: string) =>
+    invoke<void>('desktop_cards_remove_item', { id, itemId }),
+  relocateDesktopCardItem: (id: string, itemId: string, path: string) =>
+    invoke<void>('desktop_cards_relocate_item', { id, itemId, path }),
+  openDesktopCardItem: (id: string, itemId: string) =>
+    invoke<void>('desktop_cards_open_item', { id, itemId }),
+  revealDesktopCardItem: (id: string, itemId: string) =>
+    invoke<void>('desktop_cards_reveal_item', { id, itemId }),
+  revealDesktopCardOriginal: (id: string, itemId: string) =>
+    invoke<void>('desktop_cards_reveal_original', { id, itemId }),
+  moveDesktopCardItems: (id: string, itemIds: string[], destinationId: string, beforeId?: string) =>
+    invoke<void>('desktop_cards_move_items', {
+      id,
+      itemIds,
+      destinationId,
+      beforeId: beforeId ?? null,
+    }),
+  saveDesktopCardGeometry: (x: number, y: number, width: number, height: number) =>
+    invoke<void>('desktop_cards_save_geometry', { x, y, width, height }),
+  setDesktopCardStyle: (id: string, style: DesktopCardStyle) =>
+    invoke<void>('desktop_cards_set_style', { id, style }),
+  setDesktopCardVisibility: (id: string, visible: boolean) =>
+    invoke<void>('desktop_cards_set_visibility', { id, visible }),
+  setDesktopCardGeometry: (id: string, x: number, y: number, width: number, height: number) =>
+    invoke<void>('desktop_cards_set_geometry', { id, x, y, width, height }),
+  reorderDesktopCards: (ids: string[]) => invoke<void>('desktop_cards_reorder', { ids }),
+  reorderDesktopCardItems: (id: string, itemIds: string[]) =>
+    invoke<void>('desktop_cards_reorder_items', { id, itemIds }),
+  openDesktopCardStorageFolder: () => invoke<string>('desktop_cards_open_storage_folder'),
+  setDesktopCardInteractive: (active: boolean) =>
+    invoke<void>('desktop_cards_set_interactive', { active }),
+  syncDesktopCards: () => invoke<void>('desktop_cards_sync'),
+  avoidDesktopCardOverlap: () => invoke<void>('desktop_cards_avoid_overlap'),
+  resetDesktopCardPosition: (id: string) => invoke<void>('desktop_cards_reset_position', { id }),
 };
